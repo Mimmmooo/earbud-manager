@@ -346,7 +346,7 @@ class App(Adw.Application):
         label = Gtk.Label(label='This name also appears in Ubuntu Bluetooth Settings.',
                           xalign=0, wrap=True)
         box.append(label)
-        entry = Gtk.Entry(text=self.local_names.get(address, dev['name']))
+        entry = Gtk.Entry(text=dev['name'])
         entry.set_max_length(64)
         entry.set_activates_default(True)
         dialog.set_default_response(Gtk.ResponseType.OK)
@@ -438,7 +438,7 @@ class App(Adw.Application):
             cmf = known_cmf(dev)
             refs = self.widgets[address] = {}
             g = self.add_group(Adw.PreferencesGroup(
-                title=self.local_names.get(address, dev['name']),
+                title=dev['name'],
                 description='Bluetooth audio device'))
             refs['main_group'] = g
             edit_button = Gtk.Button(icon_name='document-edit-symbolic',
