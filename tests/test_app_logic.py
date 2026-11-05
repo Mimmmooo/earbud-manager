@@ -45,7 +45,7 @@ class RenameValidationTests(unittest.TestCase):
                 validate_device_name(name)
 
     def test_reject_line_breaks_and_controls(self):
-        for name in ('First\\nSecond', 'Test\\x00Name', 'A\\tB'):
+        for name in ('First\nSecond', 'Test\x00Name', 'A\tB'):
             with self.assertRaises(ValueError):
                 validate_device_name(name)
 
