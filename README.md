@@ -15,9 +15,9 @@ An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds
 | Compact connection status | ✓ Connected beneath the selected device name; disconnected devices have no settings cards |
 | ANC / Transparency / Off | Device commands with read-back verification |
 | Low Latency / Gaming mode | ON/OFF switch with read-back verification |
-| Dual Connection / Multipoint | Single ON/OFF switch, verified writes and automatic status refresh on CMF Buds 2 |
+| Dual Connection / Multipoint | Single toggle without a duplicate heading, verified writes and automatic refresh on CMF Buds 2 |
 | Find My Earbuds | Separate left/right sound, toggle to stop, 15-second circular timer |
-| Remembered devices | Read-only list that refreshes automatically while the app is open; no Refresh button |
+| Remembered Devices | Section of read-only device entries that refreshes automatically, without a Refresh button |
 | Rename from device header | Hover over the device name, click the edit icon, and save; updates the app and this computer's BlueZ alias used by Ubuntu Bluetooth Settings |
 | Ultra Bass / Equalizer / Spatial Audio / Controls | Clearly marked **Use Nothing X app on phone** at bottom |
 | Device switching via paired-device list | **Not enabled:** hardware verification still required |
@@ -94,7 +94,7 @@ To update a source installation, download/extract the newer release and rerun `.
 - Switch Dual Connection ON/OFF if supported. Its status is refreshed automatically roughly every 24 seconds when the earbuds are idle. Turning it OFF can disconnect a different source (for example, a phone); that device may need manual reconnection afterward.
 - Find My Earbuds sends sound commands for the selected left or right side. Do not wear earbuds when using this feature.
 - Hover over the device name at the top of its card to reveal the edit icon, then enter a new name. This changes the local BlueZ Bluetooth alias, so Ubuntu Bluetooth Settings shows the same name; it does not rename the earbuds on other computers or phones.
-- The Device Settings section automatically displays firmware-reported remembered devices, updating roughly once per minute while the app is open. Device connection switching is intentionally not offered.
+- The Remembered Devices section automatically displays firmware-reported devices, updating roughly once per minute while the app is open. Device connection switching is intentionally not offered.
 
 ## Privacy & safety
 
