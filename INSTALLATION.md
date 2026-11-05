@@ -2,7 +2,7 @@
 
 ## Ubuntu / Debian (recommended)
 
-**Version note:** This command installs the previously published **v0.9.1-rc2** package. The current source version is **v0.9.2-rc1**; a matching `.deb` has not yet been published. To try the new interface without replacing an existing installation, run `/usr/bin/python3 src/earbuds_manager.py` from the updated source checkout.
+**Version note:** This command installs the previously published **v0.9.1-rc2** package. The current source version is **v0.9.3-rc1**; a matching `.deb` has not yet been published. To try the new interface without replacing an existing installation, run `/usr/bin/python3 src/earbuds_manager.py` from the updated source checkout.
 
 Download the `.deb` release asset and open it with your system package installer. Alternatively, from its download directory:
 
