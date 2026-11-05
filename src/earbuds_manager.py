@@ -335,7 +335,8 @@ class App(Adw.Application):
         def complete(f):
             def ui():
                 self.dual_pending.discard(address)
-                if self._closing or generation != self._device_generation.get(address, 0):
+                if (self._closing or address in self.busy
+                        or generation != self._device_generation.get(address, 0)):
                     return GLib.SOURCE_REMOVE
                 try:
                     state = f.result()
@@ -369,7 +370,8 @@ class App(Adw.Application):
         def complete(f):
             def ui():
                 self.device_fetching.discard(address)
-                if self._closing or generation != self._device_generation.get(address, 0):
+                if (self._closing or address in self.busy
+                        or generation != self._device_generation.get(address, 0)):
                     return GLib.SOURCE_REMOVE
                 try:
                     self.remembered[address] = f.result()
