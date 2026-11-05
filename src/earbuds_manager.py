@@ -41,7 +41,7 @@ def unpack(v):
 def known_cmf(device):
     # BlueZ Alias is user-editable; use the original device name for detection.
     return (any(NOTHING_UUID in uuid for uuid in device['uuids'])
-            or 'cmf buds 2' in device.get('original_name', device['name']).lower())
+            or 'cmf buds 2' in (device.get('original_name') or device['name']).lower())
 
 
 def validate_device_name(name):
@@ -308,7 +308,7 @@ class App(Adw.Application):
         result = bus.call_sync(BLUEZ, object_path, 'org.freedesktop.DBus.Properties',
                                'Get', GLib.Variant('(ss)', ('org.bluez.Device1', 'Alias')),
                                GLib.VariantType('(v)'), Gio.DBusCallFlags.NONE, 5000, None)
-        actual = result.unpack()[0].unpack()
+        actual = unpack(result)[0]
         if actual != name:
             raise RuntimeError('Bluetooth alias verification failed')
 
@@ -445,7 +445,6 @@ class App(Adw.Application):
                                      valign=Gtk.Align.CENTER)
             edit_button.add_css_class('flat')
             edit_button.set_tooltip_text('Rename in Earbud Manager and Ubuntu Bluetooth Settings')
-            edit_button.set_accessible_name('Rename Bluetooth device')
             edit_button.set_opacity(0.0)
             edit_button.connect('clicked', lambda _btn, a=address: self.rename_dialog(a))
             g.set_header_suffix(edit_button)
