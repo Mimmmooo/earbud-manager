@@ -602,8 +602,8 @@ class App(Adw.Application):
             g.add(latency)
             refs['latency'] = latency
 
-            dual_group = self.add_group(Adw.PreferencesGroup(title='Dual Connection',
-                                                description='Multipoint ON/OFF'))
+            # No extra heading: the switch row itself is labeled Dual Connection.
+            dual_group = self.add_group(Adw.PreferencesGroup())
             dual = Adw.SwitchRow(title='Dual Connection')
             dual.set_sensitive(False)
             dual.connect('notify::active', self.on_switch, address, 'dual_set')
@@ -632,8 +632,7 @@ class App(Adw.Application):
                 ring_group.add(row)
                 refs[f'ring_{side}'] = (btn, circle)
 
-            settings = self.add_group(Adw.PreferencesGroup(title='Device Settings',
-                                        description='Remembered devices'))
+            settings = self.add_group(Adw.PreferencesGroup(title='Remembered Devices'))
             refs['remembered_group'] = settings
             refs['remembered_rows'] = []
             self.populate_remembered(address)
