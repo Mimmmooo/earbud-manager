@@ -21,6 +21,7 @@ mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 STAGE="$(mktemp -d)"
 trap 'rm -rf -- "$STAGE"' EXIT
+chmod 755 "$STAGE"
 
 install -d -m 755 "$STAGE/DEBIAN" "$STAGE/opt/earbud-manager/src" \
   "$STAGE/usr/bin" "$STAGE/usr/share/applications" "$STAGE/usr/share/doc/earbud-manager"
