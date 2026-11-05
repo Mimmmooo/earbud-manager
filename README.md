@@ -83,7 +83,7 @@ Do **not** run the GUI with `sudo`. Run as your own logged-in desktop user.
 
 ### Update / uninstall
 
-To update, download/extract the newer release and rerun `./install.sh`. The installer replaces installed **application files**, not user-local names. To uninstall, run `./uninstall.sh` from a downloaded/extracted copy of the repository. Local saved names remain unless you delete them manually.
+To update a source installation, download/extract the newer release and rerun `./install.sh`. For `.deb` installs, use APT to install the newer `.deb` instead. Do not mix the two methods. The installer replaces installed **application files**, not user-local names. To uninstall, run `./uninstall.sh` from a downloaded/extracted copy of the repository. Local saved names remain unless you delete them manually.
 
 ## Everyday usage
 
@@ -128,7 +128,7 @@ This repository deliberately contains no developer's Bluetooth addresses, userna
 bash -n install.sh uninstall.sh
 ```
 
-The test suite is offline and never sends Bluetooth commands. Protocol details and limitations are in [`docs/PROTOCOL.md`](docs/PROTOCOL.md). New device models should be enabled only after read/write operations have been validated on hardware.
+The test suite is offline and never sends Bluetooth commands. GitHub Actions also runs these checks for pushes and pull requests. Find My Earbuds attempts to stop active sounds on shutdown, but physical disconnection, power loss or forced process termination can prevent stop delivery. Protocol details and limitations are in [`docs/PROTOCOL.md`](docs/PROTOCOL.md). New device models should be enabled only after read/write operations have been validated on hardware.
 
 ## Contributions and license
 

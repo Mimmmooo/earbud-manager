@@ -4,6 +4,7 @@ import concurrent.futures
 import json
 import math
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -20,6 +21,11 @@ AUDIO_UUIDS = ('0000110b-', '00001108-', '0000111e-', '0000110e-', '0000110d-')
 NOTHING_UUID = 'aeac4a03-'
 PHONE_ONLY = ('Ultra Bass', 'Equalizer', 'Spatial Audio', 'Controls')
 NAME_FILE = Path.home() / '.config' / 'earbuds-manager' / 'local-names.json'
+
+
+def safe_error(error):
+    """Keep Bluetooth device addresses out of user-visible diagnostic text."""
+    return re.sub(r'(?i)(?:[0-9a-f]{2}:){5}[0-9a-f]{2}', '[Bluetooth device]', str(error))
 
 
 def unpack(v):
@@ -71,6 +77,7 @@ class App(Adw.Application):
         self.topology = None
         self._updating = False
         self._device_generation = {}
+        self._closing = False
         try:
             content = json.loads(NAME_FILE.read_text(encoding='utf-8'))
             self.local_names = content if isinstance(content, dict) else {}
@@ -94,6 +101,8 @@ class App(Adw.Application):
         self.window.present()
 
     def periodic(self):
+        if self._closing:
+            return GLib.SOURCE_REMOVE
         self.discover()
         for device in list(self.devices_cache):
             if known_cmf(device):
@@ -130,6 +139,8 @@ class App(Adw.Application):
         return sorted(found, key=lambda x: x['address'])
 
     def discover(self, force=False):
+        if self._closing:
+            return
         now = time.monotonic()
         if self.discovery_pending or (not force and now-self.last_discovery < 4):
             return
@@ -142,9 +153,18 @@ class App(Adw.Application):
                 try:
                     devices = f.result()
                 except Exception as e:
-                    self.show_error(f'Bluetooth discovery: {e}')
+                    self.show_error(f'Bluetooth discovery: {safe_error(e)}')
                     return GLib.SOURCE_REMOVE
                 old = self.devices_cache
+                previous_addresses = {d['address'] for d in old}
+                current_addresses = {d['address'] for d in devices}
+                for missing in previous_addresses - current_addresses:
+                    self._device_generation[missing] = self._device_generation.get(missing, 0) + 1
+                    self.cache.pop(missing, None)
+                    self.dual_cache.pop(missing, None)
+                    self.remembered.pop(missing, None)
+                    self.messages.pop(missing, None)
+                    self.last_read.pop(missing, None)
                 self.devices_cache = devices
                 identity = tuple((d['address'], known_cmf(d)) for d in devices)
                 if identity != self.topology:
@@ -166,6 +186,8 @@ class App(Adw.Application):
             self.paint(device['address'])
 
     def schedule_read(self, address, force=False):
+        if self._closing:
+            return
         if address in self.read_pending or address in self.busy:
             return
         now = time.monotonic()
@@ -183,14 +205,14 @@ class App(Adw.Application):
                 try:
                     self.cache[address] = f.result()
                 except Exception as e:
-                    self.messages[address] = 'Reading failed: ' + str(e)
+                    self.messages[address] = 'Reading failed: ' + safe_error(e)
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
         fut.add_done_callback(complete)
 
     def control(self, address, kind, value=None):
-        if address in self.busy:
+        if self._closing or address in self.busy:
             return
         self.busy.add(address)
         self._device_generation[address] = self._device_generation.get(address, 0)+1
@@ -225,7 +247,7 @@ class App(Adw.Application):
                         self.cache.setdefault(address, {})[kind] = result
                     self.messages[address] = f'{kind}: {result} (verified)'
                 except Exception as e:
-                    self.messages[address] = f'{kind}: {e}'
+                    self.messages[address] = f'{kind}: {safe_error(e)}'
                     if kind == 'dual_set':
                         self.dual_cache[address] = previous
                     elif kind in ('anc', 'latency'):
@@ -245,6 +267,8 @@ class App(Adw.Application):
         self.control(address, 'dual_get')
 
     def read_remembered(self, address):
+        if self._closing:
+            return
         if address in self.device_fetching or address in self.busy:
             return
         self.device_fetching.add(address)
@@ -256,7 +280,7 @@ class App(Adw.Application):
                     self.remembered[address] = f.result()
                     self.populate_remembered(address)
                 except Exception as e:
-                    self.messages[address] = f'Device list: {e}'
+                    self.messages[address] = f'Device list: {safe_error(e)}'
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
@@ -432,7 +456,10 @@ class App(Adw.Application):
     def on_anc(self, widget, _param, address, choices):
         if self._updating or address in self.busy:
             return
-        selected = choices[widget.get_selected()]
+        index = widget.get_selected()
+        if index >= len(choices):
+            return
+        selected = choices[index]
         if selected != self.cache.get(address, {}).get('anc'):
             self.control(address, 'anc', selected)
 
@@ -484,13 +511,15 @@ class App(Adw.Application):
             self._updating = False
 
     def ring_action(self, address, side):
+        if self._closing:
+            return
         key = (address, side)
         existing = self.ringing.get(key)
         if existing:
             self.stop_ring(address, side, existing['token'])
             return
         token = object()
-        self.ringing[key] = {'token': token, 'start': time.monotonic()}
+        self.ringing[key] = {'token': token, 'start': None, 'start_future': None}
         self.messages[address] = f'Find My Earbuds: starting {side}…'
         self.paint(address)
         self.update_ring(key)
@@ -501,41 +530,54 @@ class App(Adw.Application):
                     return GLib.SOURCE_REMOVE
                 try:
                     f.result()
+                    self.ringing[key]['start'] = time.monotonic()
+                    GLib.timeout_add(100, self.tick_ring, address, side, token)
                     self.messages[address] = f'Find My Earbuds: {side} playing'
                 except Exception as e:
-                    self.messages[address] = f'Find My Earbuds: {e}'
+                    self.messages[address] = f'Find My Earbuds: {safe_error(e)}'
                     self.stop_ring(address, side, token)
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
+        self.ringing[key]['start_future'] = fut
         fut.add_done_callback(done)
-        GLib.timeout_add(100, self.tick_ring, address, side, token)
 
     def stop_ring(self, address, side, token):
         key = (address, side)
         if self.ringing.get(key, {}).get('token') is not token:
             return
-        self.ringing.pop(key, None)
+        active = self.ringing.pop(key)
         self.update_ring(key)
         self.messages[address] = f'Find My Earbuds: stopping {side}…'
         self.paint(address)
-        fut = self.io_pool.submit(self.execute, address, experimental_command, 'find', side+'_off')
         def done(f):
             def ui():
                 try:
                     f.result()
                     self.messages[address] = f'Find My Earbuds: {side} stopped'
                 except Exception as e:
-                    self.messages[address] = f'Stop command failed: {e}'
+                    self.messages[address] = f'Stop command failed: {safe_error(e)}'
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
-        fut.add_done_callback(done)
+        def send_stop(_finished=None):
+            # If Play is still in flight, enqueue Stop only after it finishes.
+            fut = self.io_pool.submit(self.execute, address, experimental_command,
+                                      'find', side + '_off')
+            fut.add_done_callback(done)
+
+        start_future = active.get('start_future')
+        if start_future is not None and not start_future.done():
+            start_future.add_done_callback(send_stop)
+        else:
+            send_stop()
 
     def tick_ring(self, address, side, token):
         key = (address, side)
         item = self.ringing.get(key)
         if not item or item['token'] is not token:
+            return GLib.SOURCE_REMOVE
+        if item['start'] is None:
             return GLib.SOURCE_REMOVE
         if time.monotonic()-item['start'] >= 15:
             self.stop_ring(address, side, token)
@@ -556,7 +598,8 @@ class App(Adw.Application):
 
     def draw_ring(self, cr, width, height, key):
         state = self.ringing.get(key)
-        fraction = min(1.0, (time.monotonic()-state['start'])/15) if state else 0
+        fraction = (min(1.0, (time.monotonic()-state['start'])/15)
+                    if state and state['start'] is not None else 0)
         x, y = width/2, height/2
         radius = min(width, height)/2 - 3
         cr.set_line_width(3.5)
@@ -567,6 +610,25 @@ class App(Adw.Application):
             cr.set_source_rgba(.22, .63, .95, 1)
             cr.arc(x, y, radius, -math.pi/2, -math.pi/2 + 2*math.pi*fraction)
             cr.stroke()
+
+    def do_shutdown(self):
+        # Best effort: stop any active find tones before the process exits.
+        # Complete pending Play first, otherwise a late Play may outlive Stop.
+        self._closing = True
+        active = list(self.ringing.items())
+        self.ringing.clear()
+        for (address, side), item in active:
+            start_future = item.get('start_future')
+            try:
+                if start_future is not None:
+                    start_future.result(timeout=12)
+            except Exception:
+                pass
+            try:
+                self.execute(address, experimental_command, 'find', side + '_off')
+            except Exception:
+                pass  # Bluetooth may already be disconnected.
+        super().do_shutdown()
 
 
 if __name__ == '__main__':

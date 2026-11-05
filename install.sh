@@ -6,6 +6,13 @@ if [[ "${EUID}" -eq 0 ]]; then
   exit 1
 fi
 
+# Do not modify files owned by the .deb package manager.
+if command -v dpkg-query >/dev/null 2>&1 &&
+   [[ "$(dpkg-query -W -f='${Status}' earbud-manager 2>/dev/null || true)" == "install ok installed" ]]; then
+  echo 'A .deb installation is present. Use APT to update/remove it; do not mix installation methods.' >&2
+  exit 1
+fi
+
 SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 for required in src/earbuds_manager.py src/nothing_protocol.py; do
   [[ -f "$SOURCE_DIR/$required" ]] || { echo "Missing $required" >&2; exit 1; }

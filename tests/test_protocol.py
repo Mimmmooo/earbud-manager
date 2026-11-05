@@ -34,6 +34,38 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn('Transparency', SET_MODES)
         self.assertIn('Off', SET_MODES)
 
+    def test_fragmented_packet(self):
+        body = struct.pack('<BHHH', 0x55, 0x0160, 0x4027, 1) + b'\x01' + b'\x01'
+        packet = body + struct.pack('<H', crc16(body))
+        buffer = bytearray(packet[:5])
+        self.assertEqual(extract(buffer), [])
+        buffer.extend(packet[5:])
+        self.assertEqual(extract(buffer), [(0x27, 0x40, b'\x01')])
+
+    def test_crc_corruption_is_rejected(self):
+        body = struct.pack('<BHHH', 0x55, 0x0160, 0x4027, 1) + b'\x01' + b'\x01'
+        packet = bytearray(body + struct.pack('<H', crc16(body)))
+        packet[-1] ^= 0xff
+        self.assertEqual(extract(packet), [])
+
+    def test_parser_skips_garbage_prefix(self):
+        body = struct.pack('<BHHH', 0x55, 0x0160, 0x4027, 1) + b'\x01' + b'\x00'
+        packet = body + struct.pack('<H', crc16(body))
+        self.assertEqual(extract(bytearray(b'garbage' + packet)),
+                         [(0x27, 0x40, b'\x00')])
+
+    def test_invalid_write_operations_never_open_socket(self):
+        from nothing_protocol import change_setting, experimental_command, dual_operation
+        with self.assertRaises(ValueError):
+            change_setting('not-a-device', 'unknown', 'On')
+        with self.assertRaises(ValueError):
+            change_setting('not-a-device', 'latency', 'invalid')
+        with self.assertRaises(ValueError):
+            experimental_command('not-a-device', 'find', 'invalid')
+        with self.assertRaises(ValueError):
+            dual_operation('not-a-device', 'set', 'invalid')
+
+
 
 if __name__ == '__main__':
     unittest.main()

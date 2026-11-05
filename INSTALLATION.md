@@ -5,7 +5,7 @@
 Download the `.deb` release asset and open it with your system package installer. Alternatively, from its download directory:
 
 ```bash
-sudo apt install ./earbud-manager_0.9.1~rc2-1_all.deb
+sudo apt install ./earbud-manager_0.9.1.rc2-1_all.deb
 ```
 
 APT installs required **OS packages automatically**, if they are absent. An internet connection and administrator authentication may be required. The program then appears as **Earbud Manager** in Applications. The package does not patch GNOME Settings.
@@ -21,12 +21,14 @@ Personal local naming data in `~/.config/earbuds-manager/` is retained unless re
 ## Source code (Ubuntu)
 
 ```bash
-git clone https://github.com/OWNER/earbud-manager.git
+git clone https://github.com/Mimmmooo/earbud-manager.git
 cd earbud-manager
 ./install.sh
 ```
 
-Replace `OWNER` with the actual repository owner. This also installs Ubuntu's Python/GTK/BlueZ packages using APT. For a trial without system installation, see README.md.
+This also installs Ubuntu's Python/GTK/BlueZ packages using APT. For a trial without system installation, see README.md.
+
+**Choose one installation method.** Do not mix the packaged `.deb` installation with the source installer. Source install and uninstall scripts refuse to run if the `earbud-manager` Debian package is installed, preventing accidental deletion of package-owned files.
 
 ## Windows and macOS
 
