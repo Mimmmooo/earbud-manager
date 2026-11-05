@@ -11,8 +11,8 @@ An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds
 | Feature | Status |
 | --- | --- |
 | Original GNOME Adwaita settings/list interface | Included, with simplified device headers |
-| Left / right / case battery readings | Displayed **when reported** by firmware |
-| Compact connection status | ✓ Connected / ✕ Disconnected beneath the device name; redundant status rows removed |
+| Left / right / case battery readings | Shown when reported by firmware; otherwise a single `Battery` row displays the BlueZ percentage if available |
+| Compact connection status | ✓ Connected beneath the selected device name; disconnected devices have no settings cards |
 | ANC / Transparency / Off | Device commands with read-back verification |
 | Low Latency / Gaming mode | ON/OFF switch with read-back verification |
 | Dual Connection / Multipoint | ON/OFF switch with read-back verification on CMF Buds 2 |
@@ -23,7 +23,7 @@ An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds
 | Device switching via paired-device list | **Not enabled:** hardware verification still required |
 | Custom GNOME Settings Power panel | **Not included**; system Settings are unchanged |
 
-The application lists paired Bluetooth audio devices and shows whether each is connected. Controls remain disabled while disconnected. CMF-specific controls require successful device identification and NTAPP support.
+The app displays settings only for connected Bluetooth audio devices. With multiple connected devices, use the dropdown beside the device name to switch which device's settings are displayed. With a single connected device, no dropdown is shown. CMF-specific controls require successful device identification and NTAPP support.
 
 ## Faster refresh (introduced in v0.9.1-rc2)
 
@@ -89,7 +89,7 @@ To update a source installation, download/extract the newer release and rerun `.
 
 ## Everyday usage
 
-- Open the app to see paired Bluetooth audio devices, each marked ✓ Connected or ✕ Disconnected under its name. Connect earbuds to populate individual battery bars and enable controls.
+- Open the app to see only connected Bluetooth audio devices. Use the name dropdown when two or more devices are connected. Individual left/right/case batteries are shown when reported; a single `Battery` value appears instead only if none of those readings is available and BlueZ provides a combined percentage.
 - Change ANC or Low Lag directly with the built-in controls. Switches react immediately, then the application verifies the change over Bluetooth.
 - Switch Dual Connection ON/OFF if supported. Turning it OFF can disconnect a different source (for example, a phone); that device may need manual reconnection afterward.
 - Find My Earbuds sends sound commands for the selected left or right side. Do not wear earbuds when using this feature.
