@@ -34,7 +34,7 @@ def extract(buf):
             break
         _, ctrl, wire, length = struct.unpack_from('<BHHH', buf)
         total = 8 + length + (2 if ctrl & 0x20 else 0)
-        if total > 8192:
+        if total > 8192 or total < 8:
             del buf[0]; continue
         if len(buf) < total:
             break
@@ -242,10 +242,12 @@ def dual_devices(address, channel=16):
             if not pages:break
             added=0
             for payload in pages:
+                if len(devices) >= 20:
+                    break
                 if len(payload)<3:continue
                 pos=3
                 for _ in range(payload[2]):
-                    if pos+8>len(payload):break
+                    if len(devices) >= 20 or pos+8>len(payload):break
                     flag=payload[pos];raw_mac=payload[pos+1:pos+7];n=payload[pos+7]&0x7f
                     if pos+8+n>len(payload):break
                     name=payload[pos+8:pos+8+n].decode('utf-8','replace')
