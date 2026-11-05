@@ -9,7 +9,7 @@
 3. From the download directory, run:
 
 ```bash
-sudo apt install ./earbud-manager_*.deb
+sudo apt install './earbud-manager_0.9.3~rc1-1_all.deb'
 ```
 
 Alternatively, double-click the package and use Ubuntu's software installer. APT installs missing system packages when available. No `pip` or virtual environment is needed. Run the app from Applications, or type `earbud-manager`.
