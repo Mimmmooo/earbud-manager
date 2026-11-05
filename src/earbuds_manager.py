@@ -4,6 +4,7 @@ import concurrent.futures
 import json
 import math
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -20,6 +21,11 @@ AUDIO_UUIDS = ('0000110b-', '00001108-', '0000111e-', '0000110e-', '0000110d-')
 NOTHING_UUID = 'aeac4a03-'
 PHONE_ONLY = ('Ultra Bass', 'Equalizer', 'Spatial Audio', 'Controls')
 NAME_FILE = Path.home() / '.config' / 'earbuds-manager' / 'local-names.json'
+
+
+def safe_error(error):
+    """Keep Bluetooth device addresses out of user-visible diagnostic text."""
+    return re.sub(r'(?i)(?:[0-9a-f]{2}:){5}[0-9a-f]{2}', '[Bluetooth device]', str(error))
 
 
 def unpack(v):
@@ -147,7 +153,7 @@ class App(Adw.Application):
                 try:
                     devices = f.result()
                 except Exception as e:
-                    self.show_error(f'Bluetooth discovery: {e}')
+                    self.show_error(f'Bluetooth discovery: {safe_error(e)}')
                     return GLib.SOURCE_REMOVE
                 old = self.devices_cache
                 previous_addresses = {d['address'] for d in old}
@@ -199,7 +205,7 @@ class App(Adw.Application):
                 try:
                     self.cache[address] = f.result()
                 except Exception as e:
-                    self.messages[address] = 'Reading failed: ' + str(e)
+                    self.messages[address] = 'Reading failed: ' + safe_error(e)
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
@@ -241,7 +247,7 @@ class App(Adw.Application):
                         self.cache.setdefault(address, {})[kind] = result
                     self.messages[address] = f'{kind}: {result} (verified)'
                 except Exception as e:
-                    self.messages[address] = f'{kind}: {e}'
+                    self.messages[address] = f'{kind}: {safe_error(e)}'
                     if kind == 'dual_set':
                         self.dual_cache[address] = previous
                     elif kind in ('anc', 'latency'):
@@ -274,7 +280,7 @@ class App(Adw.Application):
                     self.remembered[address] = f.result()
                     self.populate_remembered(address)
                 except Exception as e:
-                    self.messages[address] = f'Device list: {e}'
+                    self.messages[address] = f'Device list: {safe_error(e)}'
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
@@ -450,7 +456,10 @@ class App(Adw.Application):
     def on_anc(self, widget, _param, address, choices):
         if self._updating or address in self.busy:
             return
-        selected = choices[widget.get_selected()]
+        index = widget.get_selected()
+        if index >= len(choices):
+            return
+        selected = choices[index]
         if selected != self.cache.get(address, {}).get('anc'):
             self.control(address, 'anc', selected)
 
@@ -525,7 +534,7 @@ class App(Adw.Application):
                     GLib.timeout_add(100, self.tick_ring, address, side, token)
                     self.messages[address] = f'Find My Earbuds: {side} playing'
                 except Exception as e:
-                    self.messages[address] = f'Find My Earbuds: {e}'
+                    self.messages[address] = f'Find My Earbuds: {safe_error(e)}'
                     self.stop_ring(address, side, token)
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
@@ -547,7 +556,7 @@ class App(Adw.Application):
                     f.result()
                     self.messages[address] = f'Find My Earbuds: {side} stopped'
                 except Exception as e:
-                    self.messages[address] = f'Stop command failed: {e}'
+                    self.messages[address] = f'Stop command failed: {safe_error(e)}'
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
