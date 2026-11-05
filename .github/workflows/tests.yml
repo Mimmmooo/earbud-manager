@@ -33,6 +33,7 @@ jobs:
           test -f "${deb[0]}"
           dpkg-deb --field "${deb[0]}" Package Version Architecture Depends
           dpkg-deb --contents "${deb[0]}"
+          dpkg-deb --contents "${deb[0]}" | head -n 1 | grep -q '^drwxr-xr-x'
           mkdir -p "$RUNNER_TEMP/earbud-package"
           dpkg-deb --extract "${deb[0]}" "$RUNNER_TEMP/earbud-package"
           python3 -m compileall -q "$RUNNER_TEMP/earbud-package/opt/earbud-manager/src"
