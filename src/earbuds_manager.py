@@ -51,6 +51,21 @@ def validate_device_name(name):
     return name
 
 
+def connected_audio_devices(devices):
+    """Only connected Bluetooth audio devices belong in the settings view."""
+    return [device for device in devices if device.get('connected', False)]
+
+
+def show_battery_fallback(battery, bluez_percentage):
+    """Only use BlueZ's combined battery if no component has a reading."""
+    has_component = any(
+        isinstance(battery.get(side), dict)
+        and isinstance(battery[side].get('percent'), (int, float))
+        for side in ('left', 'right', 'case')
+    )
+    return not has_component and isinstance(bluez_percentage, (int, float))
+
+
 def connection_status(device):
     """Human-readable status based on BlueZ's actual Connected property."""
     return '✓ Connected' if device.get('connected', False) else '✕ Disconnected'
@@ -75,6 +90,7 @@ class App(Adw.Application):
         self.discovery_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='earbuds-bluez')
         self.io_locks = {}
         self.devices_cache = []
+        self.selected_address = None
         self.discovery_pending = False
         self.last_discovery = 0.0
         self.last_read = {}
@@ -126,7 +142,8 @@ class App(Adw.Application):
             return GLib.SOURCE_REMOVE
         self.discover()
         for device in list(self.devices_cache):
-            if device.get('connected') and known_cmf(device):
+            if (device['address'] == self.selected_address and device.get('connected')
+                    and known_cmf(device)):
                 self.schedule_read(device['address'])
         return GLib.SOURCE_CONTINUE
 
@@ -148,7 +165,7 @@ class App(Adw.Application):
         found = []
         for object_path, interfaces in unpack(response)[0].items():
             props = interfaces.get('org.bluez.Device1')
-            if not props or not (props.get('Connected') or props.get('Paired')):
+            if not props or not props.get('Connected'):
                 continue
             uuids = [str(u).lower() for u in props.get('UUIDs', [])]
             if not any(u.startswith(AUDIO_UUIDS) for u in uuids):
@@ -191,14 +208,15 @@ class App(Adw.Application):
                     self.messages.pop(missing, None)
                     self.last_read.pop(missing, None)
                 self.devices_cache = devices
-                identity = tuple((d['address'], known_cmf(d), d['connected']) for d in devices)
+                identity = tuple((d['address'], d['name'], known_cmf(d)) for d in connected_audio_devices(devices))
                 if identity != self.topology:
                     self.render_structure(devices)
                 else:
                     for dev in devices:
                         self.paint(dev['address'])
                 for dev in devices:
-                    if dev['connected'] and known_cmf(dev):
+                    if (dev['address'] == self.selected_address and dev['connected']
+                            and known_cmf(dev)):
                         self.schedule_read(dev['address'], force=not bool(old))
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
@@ -440,8 +458,20 @@ class App(Adw.Application):
         group.add(row)
         return row, bar
 
+    def select_device(self, address):
+        if address == self.selected_address:
+            return
+        if not any(d['address'] == address for d in connected_audio_devices(self.devices_cache)):
+            return
+        self.selected_address = address
+        self.render_structure(self.devices_cache)
+        self.schedule_read(address, force=True)
+
     def render_structure(self, devices):
-        self.topology = tuple((d['address'], known_cmf(d), d['connected']) for d in devices)
+        devices = connected_audio_devices(devices)
+        self.topology = tuple((d['address'], d['name'], known_cmf(d)) for d in devices)
+        if self.selected_address not in {d['address'] for d in devices}:
+            self.selected_address = devices[0]['address'] if devices else None
         for group in self.groups:
             self.page.remove(group)
         self.groups.clear()
@@ -452,6 +482,8 @@ class App(Adw.Application):
                                 subtitle='Waiting for a device'))
             return
         for dev in devices:
+            if dev['address'] != self.selected_address:
+                continue
             address = dev['address']
             cmf = known_cmf(dev)
             refs = self.widgets[address] = {}
@@ -465,15 +497,43 @@ class App(Adw.Application):
             edit_button.set_tooltip_text('Rename in Earbud Manager and Ubuntu Bluetooth Settings')
             edit_button.set_opacity(0.0)
             edit_button.connect('clicked', lambda _btn, a=address: self.rename_dialog(a))
-            g.set_header_suffix(edit_button)
+            header_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            if len(devices) > 1:
+                selector = Gtk.MenuButton(icon_name='pan-down-symbolic')
+                selector.add_css_class('flat')
+                selector.set_tooltip_text('Switch between connected earbuds')
+                menu = Gtk.Popover()
+                device_buttons = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                device_buttons.set_margin_top(6)
+                device_buttons.set_margin_bottom(6)
+                device_buttons.set_margin_start(6)
+                device_buttons.set_margin_end(6)
+                for available in devices:
+                    option = Gtk.Button(label=available['name'])
+                    option.add_css_class('flat')
+                    option.connect('clicked',
+                                   lambda _button, addr=available['address']:
+                                   (menu.popdown(), self.select_device(addr)))
+                    device_buttons.append(option)
+                menu.set_child(device_buttons)
+                selector.set_popover(menu)
+                header_actions.append(selector)
+            header_actions.append(edit_button)
+            g.set_header_suffix(header_actions)
             refs['rename_button'] = edit_button
             hover = Gtk.EventControllerMotion()
             hover.connect('enter', lambda *_args, btn=edit_button: btn.set_opacity(1.0))
             hover.connect('leave', lambda *_args, btn=edit_button: btn.set_opacity(0.0))
             g.add_controller(hover)
+            fallback_row = Adw.ActionRow(title='Battery', subtitle='Not reported')
+            fallback_row.set_visible(False)
+            g.add(fallback_row)
+            refs['battery_fallback'] = fallback_row
             if not cmf:
-                g.add(Adw.ActionRow(title='Individual batteries',
-                                    subtitle='Device-specific protocol not available'))
+                fallback_row.set_visible(True)
+                fallback_row.set_subtitle(
+                    f"{dev['battery']}%" if isinstance(dev.get('battery'), (int, float))
+                    else 'Not reported')
                 continue
             for side, label in (('left', 'Left earbud'), ('right', 'Right earbud'),
                                 ('case', 'Charging case')):
@@ -604,8 +664,13 @@ class App(Adw.Application):
             return
         data = self.cache.get(address, {}) if dev['connected'] else {}
         battery = data.get('battery', {})
+        fallback = show_battery_fallback(battery, dev.get('battery'))
+        refs['battery_fallback'].set_visible(fallback)
+        if fallback:
+            refs['battery_fallback'].set_subtitle(f"{dev['battery']}%")
         for side in ('left', 'right', 'case'):
             row, bar = refs[side]
+            row.set_visible(not fallback)
             val = battery.get(side)
             row.set_subtitle((f"{val['percent']}%" + (' · Charging' if val['charging'] else ''))
                              if val is not None else 'Not reported')
