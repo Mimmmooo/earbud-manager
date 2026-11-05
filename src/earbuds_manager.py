@@ -51,6 +51,11 @@ def validate_device_name(name):
     return name
 
 
+def connection_status(device):
+    """Human-readable status based on BlueZ's actual Connected property."""
+    return '✓ Connected' if device.get('connected', False) else '✕ Disconnected'
+
+
 def battery_summary(battery, fallback):
     values = [battery[side]['percent'] for side in ('left', 'right') if battery.get(side)]
     if values:
@@ -452,7 +457,7 @@ class App(Adw.Application):
             refs = self.widgets[address] = {}
             g = self.add_group(Adw.PreferencesGroup(
                 title=dev['name'],
-                description='✓ Connected' if dev['connected'] else '✕ Disconnected'))
+                description=connection_status(dev)))
             refs['main_group'] = g
             edit_button = Gtk.Button(icon_name='document-edit-symbolic',
                                      valign=Gtk.Align.CENTER)
