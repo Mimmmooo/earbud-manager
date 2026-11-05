@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Earbud Manager
+GenericName=Bluetooth Earbuds Configuration
+Comment=Manage supported earbuds on GNOME
+Exec=/usr/local/bin/earbud-manager
+Icon=audio-headphones
+Terminal=false
+Categories=AudioVideo;Audio;Settings;
+StartupNotify=true
+StartupWMClass=io.github.earbudmanager.App
