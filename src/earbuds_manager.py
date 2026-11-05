@@ -39,7 +39,16 @@ def unpack(v):
 
 
 def known_cmf(device):
-    return any(NOTHING_UUID in uuid for uuid in device['uuids']) or 'cmf buds 2' in device['name'].lower()
+    # BlueZ Alias is user-editable; use the original device name for detection.
+    return (any(NOTHING_UUID in uuid for uuid in device['uuids'])
+            or 'cmf buds 2' in (device.get('original_name') or device['name']).lower())
+
+
+def validate_device_name(name):
+    name = name.strip()
+    if not name or len(name) > 64 or any(ord(ch) < 32 or ord(ch) == 127 for ch in name):
+        raise ValueError('Use 1–64 characters without line breaks or control characters')
+    return name
 
 
 def battery_summary(battery, fallback):
@@ -78,6 +87,7 @@ class App(Adw.Application):
         self._updating = False
         self._device_generation = {}
         self._closing = False
+        self.renaming = set()
         try:
             content = json.loads(NAME_FILE.read_text(encoding='utf-8'))
             self.local_names = content if isinstance(content, dict) else {}
@@ -125,7 +135,7 @@ class App(Adw.Application):
                                  GLib.VariantType('(a{oa{sa{sv}}})'),
                                  Gio.DBusCallFlags.NONE, 3500, None)
         found = []
-        for interfaces in unpack(response)[0].values():
+        for object_path, interfaces in unpack(response)[0].items():
             props = interfaces.get('org.bluez.Device1')
             if not props or not props.get('Connected'):
                 continue
@@ -133,6 +143,8 @@ class App(Adw.Application):
             if not any(u.startswith(AUDIO_UUIDS) for u in uuids):
                 continue
             found.append({'name': props.get('Alias') or props.get('Name') or 'Bluetooth Audio',
+                          'original_name': props.get('Name') or '',
+                          'object_path': object_path,
                           'address': props.get('Address', ''),
                           'battery': interfaces.get('org.bluez.Battery1', {}).get('Percentage'),
                           'uuids': uuids})
@@ -286,21 +298,116 @@ class App(Adw.Application):
             GLib.idle_add(ui)
         fut.add_done_callback(complete)
 
-    def save_local_name(self, address, entry):
-        name = entry.get_text().strip()
-        if not name:
-            return
-        self.local_names[address] = name
+    def set_bluez_alias(self, object_path, name):
+        """Set this computer's BlueZ alias, not the earbuds' global name."""
+        bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        bus.call_sync(BLUEZ, object_path, 'org.freedesktop.DBus.Properties',
+                      'Set', GLib.Variant('(ssv)', ('org.bluez.Device1', 'Alias',
+                                                    GLib.Variant('s', name))),
+                      None, Gio.DBusCallFlags.NONE, 5000, None)
+        result = bus.call_sync(BLUEZ, object_path, 'org.freedesktop.DBus.Properties',
+                               'Get', GLib.Variant('(ss)', ('org.bluez.Device1', 'Alias')),
+                               GLib.VariantType('(v)'), Gio.DBusCallFlags.NONE, 5000, None)
+        actual = unpack(result)[0]
+        if actual != name:
+            raise RuntimeError('Bluetooth alias verification failed')
+
+    def save_local_name(self, address, name):
+        """Persist the display name only after the OS-level rename succeeds."""
+        names = dict(self.local_names)
+        names[address] = name
         NAME_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = NAME_FILE.with_suffix('.tmp')
         fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w', encoding='utf-8') as fh:
-            json.dump(self.local_names, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, NAME_FILE)
-        NAME_FILE.chmod(0o600)
-        group = self.widgets.get(address, {}).get('main_group')
-        if group:
-            group.set_title(name)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as fh:
+                json.dump(names, fh, ensure_ascii=False, indent=2)
+            os.replace(tmp, NAME_FILE)
+            NAME_FILE.chmod(0o600)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+        self.local_names = names
+
+    def rename_dialog(self, address):
+        dev = next((d for d in self.devices_cache if d['address'] == address), None)
+        if not dev or address in self.renaming:
+            return
+        dialog = Gtk.Dialog(title='Rename Bluetooth device', transient_for=self.window,
+                            modal=True)
+        dialog.add_button('Cancel', Gtk.ResponseType.CANCEL)
+        dialog.add_button('Save', Gtk.ResponseType.OK)
+        box = dialog.get_content_area()
+        box.set_margin_top(16)
+        box.set_margin_bottom(16)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+        box.set_spacing(10)
+        label = Gtk.Label(label='This name also appears in Ubuntu Bluetooth Settings.',
+                          xalign=0, wrap=True)
+        box.append(label)
+        entry = Gtk.Entry(text=dev['name'])
+        entry.set_max_length(64)
+        entry.set_activates_default(True)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        box.append(entry)
+
+        def response(_dialog, response_id):
+            if response_id == Gtk.ResponseType.OK:
+                try:
+                    name = validate_device_name(entry.get_text())
+                except ValueError as error:
+                    self.show_rename_error(str(error))
+                else:
+                    self.rename_device(address, dev['object_path'], name)
+            dialog.destroy()
+        dialog.connect('response', response)
+        dialog.present()
+        entry.grab_focus()
+
+    def show_rename_error(self, message):
+        dialog = Adw.MessageDialog.new(self.window, 'Unable to rename device', message)
+        dialog.add_response('ok', 'OK')
+        dialog.present()
+
+    def rename_device(self, address, object_path, name):
+        if address in self.renaming:
+            return
+        self.renaming.add(address)
+        button = self.widgets.get(address, {}).get('rename_button')
+        if button:
+            button.set_sensitive(False)
+        # D-Bus calls run away from GTK; no RFCOMM command is involved.
+        future = self.discovery_pool.submit(self.set_bluez_alias, object_path, name)
+
+        def complete(f):
+            def ui():
+                self.renaming.discard(address)
+                current_button = self.widgets.get(address, {}).get('rename_button')
+                if current_button:
+                    current_button.set_sensitive(True)
+                try:
+                    f.result()
+                except Exception as error:
+                    self.show_rename_error(safe_error(error))
+                    return GLib.SOURCE_REMOVE
+                # BlueZ has applied the new alias even if the optional legacy
+                # local-name cache cannot be written.
+                for device in self.devices_cache:
+                    if device['address'] == address:
+                        device['name'] = name
+                group = self.widgets.get(address, {}).get('main_group')
+                if group:
+                    group.set_title(name)
+                try:
+                    self.save_local_name(address, name)
+                except OSError as error:
+                    self.show_rename_error(
+                        'Bluetooth Settings was renamed, but local name backup failed: '
+                        + safe_error(error))
+                return GLib.SOURCE_REMOVE
+            GLib.idle_add(ui)
+        future.add_done_callback(complete)
 
     def add_group(self, group):
         self.page.add(group)
@@ -331,9 +438,21 @@ class App(Adw.Application):
             cmf = known_cmf(dev)
             refs = self.widgets[address] = {}
             g = self.add_group(Adw.PreferencesGroup(
-                title=self.local_names.get(address, dev['name']),
+                title=dev['name'],
                 description='Bluetooth audio device'))
             refs['main_group'] = g
+            edit_button = Gtk.Button(icon_name='document-edit-symbolic',
+                                     valign=Gtk.Align.CENTER)
+            edit_button.add_css_class('flat')
+            edit_button.set_tooltip_text('Rename in Earbud Manager and Ubuntu Bluetooth Settings')
+            edit_button.set_opacity(0.0)
+            edit_button.connect('clicked', lambda _btn, a=address: self.rename_dialog(a))
+            g.set_header_suffix(edit_button)
+            refs['rename_button'] = edit_button
+            hover = Gtk.EventControllerMotion()
+            hover.connect('enter', lambda *_args, btn=edit_button: btn.set_opacity(1.0))
+            hover.connect('leave', lambda *_args, btn=edit_button: btn.set_opacity(0.0))
+            g.add_controller(hover)
             g.add(Adw.ActionRow(title='Connection', subtitle='Connected'))
             summary = Adw.ActionRow(title='Bluetooth battery', subtitle='Reading…')
             g.add(summary)
@@ -400,17 +519,7 @@ class App(Adw.Application):
                 refs[f'ring_{side}'] = (btn, circle)
 
             settings = self.add_group(Adw.PreferencesGroup(title='Device Settings',
-                                        description='Local name and remembered devices'))
-            row = Adw.ActionRow(title='Local earbuds name',
-                                subtitle='Only on this Ubuntu computer')
-            entry = Gtk.Entry(text=self.local_names.get(address, dev['name']),
-                              valign=Gtk.Align.CENTER)
-            entry.set_width_chars(19)
-            btn = Gtk.Button(label='Save', valign=Gtk.Align.CENTER)
-            btn.connect('clicked', lambda _btn, a=address, e=entry: self.save_local_name(a, e))
-            row.add_suffix(entry)
-            row.add_suffix(btn)
-            settings.add(row)
+                                        description='Remembered devices'))
             heading = Adw.ActionRow(title='Remembered devices',
                                     subtitle='Read-only; switching not hardware-tested')
             refresh = Gtk.Button(label='Refresh', valign=Gtk.Align.CENTER)

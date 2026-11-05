@@ -18,7 +18,7 @@ An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds
 | Dual Connection / Multipoint | ON/OFF switch with read-back verification on CMF Buds 2 |
 | Find My Earbuds | Separate left/right sound, toggle to stop, 15-second circular timer |
 | Remembered devices | Read-only paired device list and status |
-| Local rename | Per Bluetooth device, **only on this PC** |
+| Rename from device header | Hover over the device name, click the edit icon, and save; updates the app and this computer's BlueZ alias used by Ubuntu Bluetooth Settings |
 | Ultra Bass / Equalizer / Spatial Audio / Controls | Clearly marked **Use Nothing X app on phone** at bottom |
 | Device switching via paired-device list | **Not enabled:** hardware verification still required |
 | Custom GNOME Settings Power panel | **Not included**; system Settings are unchanged |
@@ -62,7 +62,7 @@ The installer asks before running `sudo`, then uses apt to install required pack
 | `/opt/earbud-manager/src/` | Application and protocol implementation |
 | `/usr/local/bin/earbud-manager` | Terminal launcher |
 | `/usr/local/share/applications/io.github.earbudmanager.App.desktop` | Applications menu shortcut |
-| `~/.config/earbuds-manager/local-names.json` | Local names, created on first save; permissions `0600` |
+| `~/.config/earbuds-manager/local-names.json` | Legacy/local display-name backup; Bluetooth alias is managed by BlueZ; permissions `0600` |
 
 **Downloads can be deleted once installation succeeds.** The executable does not depend on the extracted folder. The app does not change GNOME Settings, create a persistent Bluetooth daemon, or configure autostart.
 
@@ -91,7 +91,7 @@ To update a source installation, download/extract the newer release and rerun `.
 - Change ANC or Low Lag directly with the built-in controls. Switches react immediately, then the application verifies the change over Bluetooth.
 - Switch Dual Connection ON/OFF if supported. Turning it OFF can disconnect a different source (for example, a phone); that device may need manual reconnection afterward.
 - Find My Earbuds sends sound commands for the selected left or right side. Do not wear earbuds when using this feature.
-- Under **Device Settings**, set a custom name. The change stays on this Linux machine only.
+- Hover over the device name at the top of its card to reveal the edit icon, then enter a new name. This changes the local BlueZ Bluetooth alias, so Ubuntu Bluetooth Settings shows the same name; it does not rename the earbuds on other computers or phones.
 - Select **Refresh** under remembered devices to read the list from firmware. Device connection switching is intentionally not offered.
 
 ## Privacy & safety
@@ -107,7 +107,7 @@ This repository deliberately contains no developer's Bluetooth addresses, userna
 - **Multipoint:** Opening an NTAPP session may affect connection state. After disabling Dual Connection, the other source may disconnect.
 - **GNOME battery panel:** The app cannot replace GNOME Power settings rows or inject per-bud bars into GNOME Settings. This release makes **no OS-level modifications**.
 - **Device switching:** Read-only device list; no connect/disconnect operation exposed until testing confirms behavior.
-- **Local names:** Rename is applied in this app only, not the BlueZ alias shown everywhere in Ubuntu.
+- **Local names:** Rename changes the local BlueZ alias, which Ubuntu Bluetooth Settings should show. It does not modify the earbuds' broadcast name on other computers or phones. If BlueZ rejects the rename, the app shows an error and keeps the previous name.
 - **Find My Earbuds:** Firmware-specific commands. Leave earbuds out of ears and use in a safe environment.
 
 ## Troubleshooting
