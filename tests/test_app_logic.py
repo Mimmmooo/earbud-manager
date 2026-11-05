@@ -58,5 +58,41 @@ class RenameValidationTests(unittest.TestCase):
         self.assertFalse(known_cmf(device))
 
 
+
+status_helpers = [n for n in node.body if isinstance(n, ast.FunctionDef)
+                  and n.name == 'connection_status']
+exec(compile(ast.Module(body=status_helpers, type_ignores=[]),
+             '<status-helpers>', 'exec'), namespace)
+connection_status = namespace['connection_status']
+
+
+class CompactCardTests(unittest.TestCase):
+    def test_connection_status_from_bluez(self):
+        self.assertEqual(connection_status({'connected': True}), '✓ Connected')
+        self.assertEqual(connection_status({'connected': False}), '✕ Disconnected')
+        self.assertEqual(connection_status({}), '✕ Disconnected')
+
+    def test_redundant_rows_are_absent(self):
+        app = next(n for n in node.body if isinstance(n, ast.ClassDef)
+                   and n.name == 'App')
+        render = next(n for n in app.body if isinstance(n, ast.FunctionDef)
+                      and n.name == 'render_structure')
+        literals = [n.value for n in ast.walk(render)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        for removed in ('Connection', 'Bluetooth battery', 'NTAPP connection',
+                        'Last action'):
+            self.assertNotIn(removed, literals)
+
+    def test_individual_battery_and_controls_remain(self):
+        app = next(n for n in node.body if isinstance(n, ast.ClassDef)
+                   and n.name == 'App')
+        render = next(n for n in app.body if isinstance(n, ast.FunctionDef)
+                      and n.name == 'render_structure')
+        literals = [n.value for n in ast.walk(render)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        for required in ('Left earbud', 'Right earbud', 'Charging case',
+                         'ANC / Transparency', 'Low latency / Gaming mode'):
+            self.assertIn(required, literals)
+
 if __name__=='__main__':
     unittest.main()
