@@ -4,8 +4,8 @@
 
 - Automatically samples ANC, low-latency and battery readings, including changes made outside the app, while it is open.
 - Automatically checks multipoint state (roughly every 24 seconds when idle) and remembered device list (roughly every 60 seconds when idle), without manual Refresh buttons.
-- Removes the Device state row in Dual Connection; only the ON/OFF switch remains.
-- Removes the Remembered devices heading and Refresh button; Device Settings displays the remembered device entries directly.
+- Removes the Device state row and duplicate Dual Connection heading; only the ON/OFF switch row remains.
+- Renames the Device Settings section to Remembered Devices; remembered device entries appear directly without a Refresh button.
 - Avoids overlapping background reads and serializes per-earbud RFCOMM calls, giving user actions an opportunity to run between polls.
 - Clears automatic refresh timestamps after disconnect or user setting changes; ignores stale remembered-device responses from prior connection generations.
 - Periodic sync uses limited retries/polling and cannot promise immediate notifications of every firmware-side change. A matching Debian package is not yet published.
