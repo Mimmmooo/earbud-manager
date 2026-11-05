@@ -6,7 +6,7 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 # Do not modify files owned by the .deb package manager.
 if command -v dpkg-query >/dev/null 2>&1 &&
-   [[ "$(dpkg-query -W -f='\x24{Status}' earbud-manager 2>/dev/null || true)" == "install ok installed" ]]; then
+   [[ "$(dpkg-query -W -f='${Status}' earbud-manager 2>/dev/null || true)" == "install ok installed" ]]; then
   echo 'A .deb installation is present. Use APT to update/remove it; do not mix installation methods.' >&2
   exit 1
 fi
