@@ -4,15 +4,15 @@
 
 An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds on Linux. The currently tested device family is **CMF Buds 2**, using Nothing/CMF's proprietary NTAPP protocol over Bluetooth RFCOMM.
 
-> **Release status:** public hardware-testing build, **v0.9.1-rc2**. This is not a Nothing/CMF product and is not endorsed by Nothing Technology Limited. Test new versions before depending on them.
+> **Release status:** public hardware-testing build, **v0.9.2-rc1** (source branch; package release pending). This is not a Nothing/CMF product and is not endorsed by Nothing Technology Limited. Test new versions before depending on them.
 
 ## Features
 
 | Feature | Status |
 | --- | --- |
-| Original GNOME Adwaita settings/list interface | Included |
-| Left / right / case battery readings | Displayed **when reported** by firmware |
-| Battery summary in the app | Lower of available left/right readings; BlueZ fallback |
+| Original GNOME Adwaita settings/list interface | Included, with simplified device headers |
+| Left / right / case battery readings | Shown when reported by firmware; otherwise a single `Battery` row displays the BlueZ percentage if available |
+| Compact connection status | ✓ Connected beneath the selected device name; disconnected devices have no settings cards |
 | ANC / Transparency / Off | Device commands with read-back verification |
 | Low Latency / Gaming mode | ON/OFF switch with read-back verification |
 | Dual Connection / Multipoint | ON/OFF switch with read-back verification on CMF Buds 2 |
@@ -23,9 +23,9 @@ An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds
 | Device switching via paired-device list | **Not enabled:** hardware verification still required |
 | Custom GNOME Settings Power panel | **Not included**; system Settings are unchanged |
 
-The same application can show connected standard Bluetooth audio devices, though CMF-specific controls require successful device identification and NTAPP support.
+The app displays settings only for connected Bluetooth audio devices. With multiple connected devices, use the dropdown beside the device name to switch which device's settings are displayed. With a single connected device, no dropdown is shown. CMF-specific controls require successful device identification and NTAPP support.
 
-## Faster refresh in v0.9.1-rc2
+## Faster refresh (introduced in v0.9.1-rc2)
 
 Earlier development builds rebuilt the entire GTK page whenever new battery or setting data arrived. That made toggles appear slow, could reset scroll position, and delayed actions behind background device reads. This release:
 
@@ -39,6 +39,8 @@ Earlier development builds rebuilt the entire GTK page whenever new battery or s
 A visual switch responding immediately **does not guarantee** the earbuds finished updating immediately. Bluetooth connection establishment and firmware acknowledgement still take time. No claim is made about a specific latency without measurements on hardware.
 
 ## Recommended install: Ubuntu `.deb` package
+
+The most recent published `.deb` may still be **v0.9.1-rc2** until a new release is built and uploaded; the v0.9.2-rc1 source update does not create a new Debian asset automatically.
 
 Download the `.deb` file from the GitHub release and install it through your system package manager. APT automatically fetches missing system dependencies when available. **No manual Python/pip setup is needed.** An internet connection may be required for OS packages. There is no Windows/macOS executable yet. See [INSTALLATION.md](INSTALLATION.md) for exact steps.
 
@@ -87,7 +89,7 @@ To update a source installation, download/extract the newer release and rerun `.
 
 ## Everyday usage
 
-- Open the app with earbuds connected. It will populate the battery and control fields asynchronously.
+- Open the app to see only connected Bluetooth audio devices. Use the name dropdown when two or more devices are connected. Individual left/right/case batteries are shown when reported; a single `Battery` value appears instead only if none of those readings is available and BlueZ provides a combined percentage.
 - Change ANC or Low Lag directly with the built-in controls. Switches react immediately, then the application verifies the change over Bluetooth.
 - Switch Dual Connection ON/OFF if supported. Turning it OFF can disconnect a different source (for example, a phone); that device may need manual reconnection afterward.
 - Find My Earbuds sends sound commands for the selected left or right side. Do not wear earbuds when using this feature.
@@ -114,9 +116,9 @@ This repository deliberately contains no developer's Bluetooth addresses, userna
 
 **Application not in menu:** Log out/in, or run `earbud-manager` directly. Check the `.desktop` file in `/usr/local/share/applications/`.
 
-**No earbuds found:** Confirm they show Connected in GNOME Bluetooth settings, Bluetooth service is running, and an audio profile is present. The app does not pair devices for you.
+**No earbuds found:** Confirm the earbuds are paired in GNOME Bluetooth settings and have an audio UUID. Bluetooth must be running. The app does not pair devices for you.
 
-**Setting shows an error:** Disconnect/reconnect earbuds, then retry. Another phone may be occupying the proprietary NTAPP connection. Errors are shown in the app and state is re-read.
+**Setting shows an error:** Disconnect/reconnect earbuds, then retry. Another phone may be occupying the proprietary NTAPP connection. Action failures are shown as temporary notifications and state is re-read.
 
 **Python GI or cairo error:** Install the packages in the no-install command above. Use Ubuntu's `/usr/bin/python3`, not a virtualenv Python missing system GI libraries.
 
