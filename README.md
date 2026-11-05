@@ -1,145 +1,66 @@
 # Earbud Manager
 
-**Linux, Windows, and macOS editions are planned. The Ubuntu/GNOME edition is the only currently runnable and hardware-tested variant.**
+A lightweight, unofficial Bluetooth earbuds manager for **Ubuntu GNOME**, built with Python, GTK 4 and libadwaita. Bluetooth controls use Nothing/CMF's NTAPP protocol via BlueZ.
 
-An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds on Linux. The currently tested device family is **CMF Buds 2**, using Nothing/CMF's proprietary NTAPP protocol over Bluetooth RFCOMM.
+**Version:** `v0.9.3-rc1` · **Tested device:** CMF Buds 2 · **License:** MIT
 
-> **Release status:** public hardware-testing build, **v0.9.3-rc1** (source branch; package release pending). This is not a Nothing/CMF product and is not endorsed by Nothing Technology Limited. Test new versions before depending on them.
+> This is a community project, not affiliated with Nothing. Windows and macOS versions are not available.
 
 ## Features
 
-| Feature | Status |
-| --- | --- |
-| Original GNOME Adwaita settings/list interface | Included, with simplified device headers |
-| Left / right / case battery readings | Shown when reported by firmware; otherwise a single `Battery` row displays the BlueZ percentage if available |
-| Compact connection status | ✓ Connected beneath the selected device name; disconnected devices have no settings cards |
-| ANC / Transparency / Off | Device commands with read-back verification |
-| Low Latency / Gaming mode | ON/OFF switch with read-back verification |
-| Dual Connection / Multipoint | Single toggle without a duplicate heading, verified writes and automatic refresh on CMF Buds 2 |
-| Find My Earbuds | Separate left/right sound, toggle to stop, 15-second circular timer |
-| Remembered Devices | Section of read-only device entries that refreshes automatically, without a Refresh button |
-| Rename from device header | Hover over the device name, click the edit icon, and save; updates the app and this computer's BlueZ alias used by Ubuntu Bluetooth Settings |
-| Ultra Bass / Equalizer / Spatial Audio / Controls | Clearly marked **Use Nothing X app on phone** at bottom |
-| Device switching via paired-device list | **Not enabled:** hardware verification still required |
-| Custom GNOME Settings Power panel | **Not included**; system Settings are unchanged |
+- **Battery:** left, right and charging case levels where reported. Falls back to a single BlueZ battery reading if none are available.
+- **ANC:** noise cancellation modes, Transparency and Off.
+- **Gaming mode:** low-latency ON/OFF.
+- **Dual Connection:** multipoint ON/OFF, with firmware read-back.
+- **Find My Earbuds:** separate left/right sound with manual stop and a 15-second timer. **Do not wear earbuds when ringing.**
+- **Remembered Devices:** read-only list from the earbuds.
+- **Rename:** edit the device name from the header; also updates its local Ubuntu Bluetooth alias.
+- **Multiple connected devices:** select one from the header dropdown. Disconnected devices have no settings cards.
 
-The app displays settings only for connected Bluetooth audio devices. With multiple connected devices, use the dropdown beside the device name to switch which device's settings are displayed. With a single connected device, no dropdown is shown. CMF-specific controls require successful device identification and NTAPP support.
+Battery, ANC and Gaming Mode are checked about every 12 seconds; Dual Connection about every 24 seconds; remembered devices about every 60 seconds while the app is open. Actual updates can take longer if Bluetooth is busy. Ultra Bass, Equalizer, Spatial Audio and custom controls still require the Nothing X phone app.
 
-## Faster refresh (introduced in v0.9.1-rc2)
+## Install
 
-Earlier development builds rebuilt the entire GTK page whenever new battery or setting data arrived. That made toggles appear slow, could reset scroll position, and delayed actions behind background device reads. This release:
+**Ubuntu 26.04 GNOME** is the primary test target. Pair and connect the earbuds in **Settings → Bluetooth** first.
 
-- Updates existing GTK rows and progress bars **in place**, without rebuilding the page for changing battery/status values.
-- Scans BlueZ on a background worker, keeping GTK responsive while Bluetooth discovery runs.
-- Uses separate pools for **user actions**, **battery/status reads**, and **device discovery**.
-- Serializes NTAPP operations for each Bluetooth device to avoid overlapping RFCOMM sessions.
-- Uses an optimistic switch update while the device command is running, followed by **actual read-back verification**. If verification fails, the app shows an error and refreshes the state.
-- Reduces unnecessary telemetry waiting when all expected readings have arrived. Battery/ANC/latency reads are limited to about every 12 seconds while the app is open. Multipoint and remembered device checks run less frequently to avoid excessive Bluetooth traffic.
-
-A visual switch responding immediately **does not guarantee** the earbuds finished updating immediately. Bluetooth connection establishment and firmware acknowledgement still take time. No claim is made about a specific latency without measurements on hardware.
-
-## Recommended install: Ubuntu `.deb` package
-
-The most recent published `.deb` may still be **v0.9.1-rc2** until a new release is built and uploaded; the v0.9.3-rc1 source update does not create a new Debian asset automatically.
-
-Download the `.deb` file from the GitHub release and install it through your system package manager. APT automatically fetches missing system dependencies when available. **No manual Python/pip setup is needed.** An internet connection may be required for OS packages. There is no Windows/macOS executable yet. See [INSTALLATION.md](INSTALLATION.md) for exact steps.
-
-## Install on Ubuntu GNOME
-
-Test target: Ubuntu 26.04 with GTK 4, libadwaita, Python 3, BlueZ.
-
-1. Pair and connect your earbuds in **Settings → Bluetooth**.
-2. Download and extract the release ZIP (or clone the GitHub repository).
-3. Open a terminal in the project directory and run:
+**Recommended: Debian package.** Download the `.deb` asset from [Releases](https://github.com/Mimmmooo/earbud-manager/releases) for the version you want, then run from the download folder:
 
 ```bash
-chmod +x install.sh uninstall.sh
+sudo apt install ./earbud-manager_*.deb
+```
+
+APT installs required system dependencies if available. No manual Python or pip setup is needed; Internet may be required for dependencies. **Check the release version:** the older `v0.9.1-rc2` asset does not include the latest UI.
+
+**Install from source instead:**
+
+```bash
+git clone https://github.com/Mimmmooo/earbud-manager.git
+cd earbud-manager
 ./install.sh
 ```
 
-The installer asks before running `sudo`, then uses apt to install required packages and copies the app to system directories:
-
-| Destination | Role |
-| --- | --- |
-| `/opt/earbud-manager/src/` | Application and protocol implementation |
-| `/usr/local/bin/earbud-manager` | Terminal launcher |
-| `/usr/local/share/applications/io.github.earbudmanager.App.desktop` | Applications menu shortcut |
-| `~/.config/earbuds-manager/local-names.json` | Legacy/local display-name backup; Bluetooth alias is managed by BlueZ; permissions `0600` |
-
-**Downloads can be deleted once installation succeeds.** The executable does not depend on the extracted folder. The app does not change GNOME Settings, create a persistent Bluetooth daemon, or configure autostart.
-
-Launch via Applications → **Earbud Manager**, or:
+Do not mix source and `.deb` installations. For testing a new branch without installing it:
 
 ```bash
-earbud-manager
-```
-
-For a no-install trial:
-
-```bash
-sudo apt install python3 python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-4.0 gir1.2-adw-1 bluez
 /usr/bin/python3 src/earbuds_manager.py
 ```
 
-Do **not** run the GUI with `sudo`. Run as your own logged-in desktop user.
+Launch **Earbud Manager** from Applications or run `earbud-manager`. Uninstall a Debian package with `sudo apt remove earbud-manager`; uninstall source installs with `./uninstall.sh`. Local saved names are preserved.
 
-### Update / uninstall
+See [INSTALLATION.md](INSTALLATION.md) for building and publishing a package.
 
-To update a source installation, download/extract the newer release and rerun `./install.sh`. For `.deb` installs, use APT to install the newer `.deb` instead. Do not mix the two methods. The installer replaces installed **application files**, not user-local names. To uninstall, run `./uninstall.sh` from a downloaded/extracted copy of the repository. Local saved names remain unless you delete them manually.
+## Limitations and privacy
 
-## Everyday usage
+Only **CMF Buds 2** has been the hardware test target. Some controls and battery components may vary by model or firmware. Remembered devices are **read-only**; switching between them is not implemented. A local rename does not change the earbuds' name on phones or other computers.
 
-- Open the app to see only connected Bluetooth audio devices. Use the name dropdown when two or more devices are connected. Individual left/right/case batteries are shown when reported; a single `Battery` value appears instead only if none of those readings is available and BlueZ provides a combined percentage.
-- Change ANC or Low Lag directly with the built-in controls. Switches react immediately, then the application verifies the change over Bluetooth.
-- Switch Dual Connection ON/OFF if supported. Its status is refreshed automatically roughly every 24 seconds when the earbuds are idle. Turning it OFF can disconnect a different source (for example, a phone); that device may need manual reconnection afterward.
-- Find My Earbuds sends sound commands for the selected left or right side. Do not wear earbuds when using this feature.
-- Hover over the device name at the top of its card to reveal the edit icon, then enter a new name. This changes the local BlueZ Bluetooth alias, so Ubuntu Bluetooth Settings shows the same name; it does not rename the earbuds on other computers or phones.
-- The Remembered Devices section automatically displays firmware-reported devices, updating roughly once per minute while the app is open. Device connection switching is intentionally not offered.
+The app communicates locally with BlueZ and the earbuds. **No account, cloud service or telemetry is used.** Device names and Bluetooth addresses may appear in local configuration or diagnostic output; redact them before sharing logs or screenshots.
 
-## Privacy & safety
-
-No account login or telemetry backend is used. The application talks locally to BlueZ and the connected earbuds. Device addresses and remembered-device names can occur **in memory and in the local name configuration file**, but no such values are shipped in this repository. **Do not upload terminal logs, screenshots, or `~/.config/earbuds-manager/local-names.json` to public GitHub issues without removing personal identifiers.**
-
-This repository deliberately contains no developer's Bluetooth addresses, usernames, paired-device names, diagnostic captures, or personal directories.
-
-## Known limitations
-
-- **Device-specific:** Some earbuds/firmware versions may not support the current NTAPP commands. Battery components may be absent; case readings may be stale or unavailable when the case is closed or out of range.
-- **Timing:** The Bluetooth connection/session and read-back can still take seconds. Optimistic UI is not a claim of instant hardware execution.
-- **Multipoint:** Opening an NTAPP session may affect connection state. After disabling Dual Connection, the other source may disconnect.
-- **GNOME battery panel:** The app cannot replace GNOME Power settings rows or inject per-bud bars into GNOME Settings. This release makes **no OS-level modifications**.
-- **Device switching:** Read-only device list; no connect/disconnect operation exposed until testing confirms behavior.
-- **Local names:** Rename changes the local BlueZ alias, which Ubuntu Bluetooth Settings should show. It does not modify the earbuds' broadcast name on other computers or phones. If BlueZ rejects the rename, the app shows an error and keeps the previous name.
-- **Find My Earbuds:** Firmware-specific commands. Leave earbuds out of ears and use in a safe environment.
-
-## Troubleshooting
-
-**Application not in menu:** Log out/in, or run `earbud-manager` directly. Check the `.desktop` file in `/usr/local/share/applications/`.
-
-**No earbuds found:** Confirm the earbuds are paired in GNOME Bluetooth settings and have an audio UUID. Bluetooth must be running. The app does not pair devices for you.
-
-**Setting shows an error:** Disconnect/reconnect earbuds, then retry. Another phone may be occupying the proprietary NTAPP connection. Action failures are shown as temporary notifications and state is re-read.
-
-**Python GI or cairo error:** Install the packages in the no-install command above. Use Ubuntu's `/usr/bin/python3`, not a virtualenv Python missing system GI libraries.
-
-## Development
+## Contribute and test
 
 ```bash
 /usr/bin/python3 -m unittest discover -s tests -v
 /usr/bin/python3 -m compileall -q src tests
-bash -n install.sh uninstall.sh
+bash -n install.sh uninstall.sh packaging/build-deb.sh
 ```
 
-The test suite is offline and never sends Bluetooth commands. GitHub Actions also runs these checks for pushes and pull requests. Find My Earbuds attempts to stop active sounds on shutdown, but physical disconnection, power loss or forced process termination can prevent stop delivery. Protocol details and limitations are in [`docs/PROTOCOL.md`](docs/PROTOCOL.md). New device models should be enabled only after read/write operations have been validated on hardware.
-
-## Contributions and license
-
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [LICENSE](LICENSE). Licensed under MIT.
-
-## Platform editions and shared roadmap
-
-The repository is organized for independent platform integrations. **Do not run the Ubuntu GTK app on Windows or macOS**: it depends on BlueZ, GNOME, and Linux D-Bus. The `platforms/windows` and `platforms/macos` directories document planned ports, not runnable apps.
-
-The long-term goal is consistent battery, ANC, low-latency, multipoint, and local naming features where supported by hardware, using platform-specific Bluetooth adapters and native UI. Platform support will be marked available only after device testing.
-
-The Ubuntu program is installed as **Earbud Manager** via `earbud-manager`. Existing user names under `~/.config/earbuds-manager/` are preserved from previous releases.
+See [protocol notes](docs/PROTOCOL.md), [contribution guide](CONTRIBUTING.md), [security policy](SECURITY.md), and [MIT license](LICENSE).
