@@ -25,3 +25,23 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y desktop-file-utils
           desktop-file-validate packaging/io.github.earbudmanager.App.desktop
+      - name: Build and inspect Debian package
+        run: |
+          bash -n packaging/build-deb.sh
+          bash packaging/build-deb.sh
+          deb=(dist/*.deb)
+          test -f "${deb[0]}"
+          dpkg-deb --field "${deb[0]}" Package Version Architecture Depends
+          dpkg-deb --contents "${deb[0]}"
+          dpkg-deb --contents "${deb[0]}" | head -n 1 | grep -q '^drwxr-xr-x'
+          mkdir -p "$RUNNER_TEMP/earbud-package"
+          dpkg-deb --extract "${deb[0]}" "$RUNNER_TEMP/earbud-package"
+          python3 -m compileall -q "$RUNNER_TEMP/earbud-package/opt/earbud-manager/src"
+          desktop-file-validate "$RUNNER_TEMP/earbud-package/usr/share/applications/io.github.earbudmanager.App.desktop"
+      - name: Save installer as downloadable workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: earbud-manager-deb
+          path: dist/*.deb
+          if-no-files-found: error
+          retention-days: 14

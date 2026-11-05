@@ -1,0 +1,49 @@
+name: Publish Debian installer on version tag
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Check release tag matches VERSION
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          test "$REF_TYPE" = tag || { echo "Run this workflow from a version tag."; exit 1; }
+          test "$REF_NAME" = "v$(tr -d '[:space:]' < VERSION)" || {
+            echo "Git tag and VERSION mismatch"; exit 1;
+          }
+      - name: Validate source and build installer
+        run: |
+          python3 -m compileall -q src tests
+          python3 -m unittest discover -s tests -v
+          bash packaging/build-deb.sh
+          test -f dist/*.deb
+          dpkg-deb --info dist/*.deb
+      - name: Create or update matching GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.deb --clobber
+          else
+            if [[ "$TAG" == *-rc* ]]; then
+              gh release create "$TAG" dist/*.deb --title "Earbud Manager $TAG" --generate-notes --prerelease
+            else
+              gh release create "$TAG" dist/*.deb --title "Earbud Manager $TAG" --generate-notes
+            fi
+          fi
