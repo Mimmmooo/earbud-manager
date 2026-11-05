@@ -4,7 +4,7 @@
 
 An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds on Linux. The currently tested device family is **CMF Buds 2**, using Nothing/CMF's proprietary NTAPP protocol over Bluetooth RFCOMM.
 
-> **Release status:** public hardware-testing build, **v0.9.2-rc1** (source branch; package release pending). This is not a Nothing/CMF product and is not endorsed by Nothing Technology Limited. Test new versions before depending on them.
+> **Release status:** public hardware-testing build, **v0.9.3-rc1** (source branch; package release pending). This is not a Nothing/CMF product and is not endorsed by Nothing Technology Limited. Test new versions before depending on them.
 
 ## Features
 
@@ -15,9 +15,9 @@ An **unofficial, community-built GNOME configuration app** for Bluetooth earbuds
 | Compact connection status | ✓ Connected beneath the selected device name; disconnected devices have no settings cards |
 | ANC / Transparency / Off | Device commands with read-back verification |
 | Low Latency / Gaming mode | ON/OFF switch with read-back verification |
-| Dual Connection / Multipoint | ON/OFF switch with read-back verification on CMF Buds 2 |
+| Dual Connection / Multipoint | Single ON/OFF switch, verified writes and automatic status refresh on CMF Buds 2 |
 | Find My Earbuds | Separate left/right sound, toggle to stop, 15-second circular timer |
-| Remembered devices | Read-only paired device list and status |
+| Remembered devices | Read-only list that refreshes automatically while the app is open; no Refresh button |
 | Rename from device header | Hover over the device name, click the edit icon, and save; updates the app and this computer's BlueZ alias used by Ubuntu Bluetooth Settings |
 | Ultra Bass / Equalizer / Spatial Audio / Controls | Clearly marked **Use Nothing X app on phone** at bottom |
 | Device switching via paired-device list | **Not enabled:** hardware verification still required |
@@ -34,13 +34,13 @@ Earlier development builds rebuilt the entire GTK page whenever new battery or s
 - Uses separate pools for **user actions**, **battery/status reads**, and **device discovery**.
 - Serializes NTAPP operations for each Bluetooth device to avoid overlapping RFCOMM sessions.
 - Uses an optimistic switch update while the device command is running, followed by **actual read-back verification**. If verification fails, the app shows an error and refreshes the state.
-- Reduces unnecessary telemetry waiting when all expected readings have arrived. Background sampling is limited to about once every 12 seconds while the app is open.
+- Reduces unnecessary telemetry waiting when all expected readings have arrived. Battery/ANC/latency reads are limited to about every 12 seconds while the app is open. Multipoint and remembered device checks run less frequently to avoid excessive Bluetooth traffic.
 
 A visual switch responding immediately **does not guarantee** the earbuds finished updating immediately. Bluetooth connection establishment and firmware acknowledgement still take time. No claim is made about a specific latency without measurements on hardware.
 
 ## Recommended install: Ubuntu `.deb` package
 
-The most recent published `.deb` may still be **v0.9.1-rc2** until a new release is built and uploaded; the v0.9.2-rc1 source update does not create a new Debian asset automatically.
+The most recent published `.deb` may still be **v0.9.1-rc2** until a new release is built and uploaded; the v0.9.3-rc1 source update does not create a new Debian asset automatically.
 
 Download the `.deb` file from the GitHub release and install it through your system package manager. APT automatically fetches missing system dependencies when available. **No manual Python/pip setup is needed.** An internet connection may be required for OS packages. There is no Windows/macOS executable yet. See [INSTALLATION.md](INSTALLATION.md) for exact steps.
 
@@ -91,10 +91,10 @@ To update a source installation, download/extract the newer release and rerun `.
 
 - Open the app to see only connected Bluetooth audio devices. Use the name dropdown when two or more devices are connected. Individual left/right/case batteries are shown when reported; a single `Battery` value appears instead only if none of those readings is available and BlueZ provides a combined percentage.
 - Change ANC or Low Lag directly with the built-in controls. Switches react immediately, then the application verifies the change over Bluetooth.
-- Switch Dual Connection ON/OFF if supported. Turning it OFF can disconnect a different source (for example, a phone); that device may need manual reconnection afterward.
+- Switch Dual Connection ON/OFF if supported. Its status is refreshed automatically roughly every 24 seconds when the earbuds are idle. Turning it OFF can disconnect a different source (for example, a phone); that device may need manual reconnection afterward.
 - Find My Earbuds sends sound commands for the selected left or right side. Do not wear earbuds when using this feature.
 - Hover over the device name at the top of its card to reveal the edit icon, then enter a new name. This changes the local BlueZ Bluetooth alias, so Ubuntu Bluetooth Settings shows the same name; it does not rename the earbuds on other computers or phones.
-- Select **Refresh** under remembered devices to read the list from firmware. Device connection switching is intentionally not offered.
+- The Device Settings section automatically displays firmware-reported remembered devices, updating roughly once per minute while the app is open. Device connection switching is intentionally not offered.
 
 ## Privacy & safety
 
