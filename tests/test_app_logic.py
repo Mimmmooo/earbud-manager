@@ -142,5 +142,42 @@ class BatteryFallbackTests(unittest.TestCase):
                                                 'right': None, 'case': None}, 80))
 
 
+class AutomaticRefreshTests(unittest.TestCase):
+    def _method(self, name):
+        app = next(n for n in node.body if isinstance(n, ast.ClassDef)
+                   and n.name == 'App')
+        return next(n for n in app.body if isinstance(n, ast.FunctionDef)
+                    and n.name == name)
+
+    def test_manual_refresh_buttons_removed(self):
+        render = self._method('render_structure')
+        literals = [n.value for n in ast.walk(render)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        self.assertNotIn('Device state', literals)
+        self.assertNotIn('Refresh status', literals)
+        self.assertNotIn('Refresh', literals)
+        self.assertIn('Dual Connection', literals)
+        self.assertIn('Device Settings', literals)
+
+    def test_periodic_refreshes_all_status_sources(self):
+        periodic = self._method('periodic')
+        calls = {n.func.attr for n in ast.walk(periodic)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+        self.assertTrue({'discover', 'schedule_read', 'read_dual',
+                         'read_remembered'}.issubset(calls))
+
+    def test_multipoint_poll_has_throttle_and_single_flight(self):
+        dual = self._method('read_dual')
+        attrs = {n.attr for n in ast.walk(dual) if isinstance(n, ast.Attribute)}
+        self.assertIn('dual_pending', attrs)
+        self.assertIn('last_dual_read', attrs)
+
+    def test_remembered_list_has_throttle_and_generation_guard(self):
+        remembered = self._method('read_remembered')
+        attrs = {n.attr for n in ast.walk(remembered)
+                 if isinstance(n, ast.Attribute)}
+        self.assertIn('last_remembered_read', attrs)
+        self.assertIn('_device_generation', attrs)
+
 if __name__=='__main__':
     unittest.main()
