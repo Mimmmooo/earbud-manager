@@ -26,7 +26,7 @@ Battery, ANC and Gaming Mode are checked about every 12 seconds; Dual Connection
 **Recommended: Debian package.** Download the `.deb` asset from [Releases](https://github.com/Mimmmooo/earbud-manager/releases) for the version you want, then run from the download folder:
 
 ```bash
-sudo apt install ./earbud-manager_*.deb
+sudo apt install './earbud-manager_0.9.3~rc1-1_all.deb'
 ```
 
 APT installs required system dependencies if available. No manual Python or pip setup is needed; Internet may be required for dependencies. **Check the release version:** the older `v0.9.1-rc2` asset does not include the latest UI.
