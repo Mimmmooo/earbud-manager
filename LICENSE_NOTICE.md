@@ -1,1 +1,0 @@
-This repository includes an MIT license file. Third-party reverse-engineering references are acknowledged as background technical resources, not copied as licensed code. Verify upstream licenses before importing external code into this project.
