@@ -1,26 +1,22 @@
 # Install Earbud Manager
 
-## Ubuntu / Debian (recommended)
+**Current source version:** `v0.9.3-rc1` (Ubuntu GNOME; CMF Buds 2 test target). The published `v0.9.1-rc2` Debian package is older. A new GitHub Release must be published before its updated installer appears under Releases.
 
-**Version note:** This command installs the previously published **v0.9.1-rc2** package. The current source version is **v0.9.3-rc1**; a matching `.deb` has not yet been published. To try the new interface without replacing an existing installation, run `/usr/bin/python3 src/earbuds_manager.py` from the updated source checkout.
+## Install from a release (recommended)
 
-Download the `.deb` release asset and open it with your system package installer. Alternatively, from its download directory:
-
-```bash
-sudo apt install ./earbud-manager_0.9.1.rc2-1_all.deb
-```
-
-APT installs required **OS packages automatically**, if they are absent. An internet connection and administrator authentication may be required. The program then appears as **Earbud Manager** in Applications. The package does not patch GNOME Settings.
-
-Uninstall:
+1. Open [GitHub Releases](https://github.com/Mimmmooo/earbud-manager/releases).
+2. Download the `.deb` file from the **matching version** (not an older release).
+3. From the download directory, run:
 
 ```bash
-sudo apt remove earbud-manager
+sudo apt install ./earbud-manager_*.deb
 ```
 
-Personal local naming data in `~/.config/earbuds-manager/` is retained unless removed manually.
+Alternatively, double-click the package and use Ubuntu's software installer. APT installs missing system packages when available. No `pip` or virtual environment is needed. Run the app from Applications, or type `earbud-manager`.
 
-## Source code (Ubuntu)
+**Update:** Install the newer `.deb` with APT as above. **Remove:** `sudo apt remove earbud-manager`. Local rename preferences remain.
+
+## Install from source
 
 ```bash
 git clone https://github.com/Mimmmooo/earbud-manager.git
@@ -28,14 +24,24 @@ cd earbud-manager
 ./install.sh
 ```
 
-This also installs Ubuntu's Python/GTK/BlueZ packages using APT. For a trial without system installation, see README.md.
+For a preview without installing, run `/usr/bin/python3 src/earbuds_manager.py` after installing the system dependencies listed in README. **Do not mix source installation and the Debian package.** If you already installed from source, run `./uninstall.sh` from the source checkout before installing the `.deb` package.
 
-**Choose one installation method.** Do not mix the packaged `.deb` installation with the source installer. Source install and uninstall scripts refuse to run if the `earbud-manager` Debian package is installed, preventing accidental deletion of package-owned files.
+## Build the matching Debian package
 
-## Windows and macOS
+On Ubuntu or Debian with `dpkg-deb` installed, from the repository root:
 
-**Not available yet.** No `.exe`, `.msi`, `.dmg` or `.pkg` build currently exists. Do not advertise these operating systems as supported until the native Bluetooth backends have been developed and tested.
+```bash
+bash packaging/build-deb.sh
+```
 
-## Requirements
+This creates `dist/earbud-manager_0.9.3~rc1-1_all.deb` for the current VERSION. Build checks (including installation layout validation) also run automatically in [GitHub Actions](https://github.com/Mimmmooo/earbud-manager/actions); the successful run provides an artifact ZIP containing the `.deb`.
 
-Supported device: CMF Buds 2 (currently hardware-tested). Linux Bluetooth stack (BlueZ) and RFCOMM must work. The app does not require an online user account or cloud access; APT may need internet during installation. Certain earbuds settings remain phone-only.
+## Publish a new installer (maintainer)
+
+1. **Merge and verify** the version branch on `main`. Confirm `VERSION` says `0.9.3-rc1` and GitHub Actions is green.
+2. On GitHub, open **Releases → Draft a new release**, create a new tag **`v0.9.3-rc1` targeting `main`**, and mark it **Pre-release**. Publish the release without attaching the old `.deb`.
+3. The `Publish Debian installer on version tag` workflow builds and attaches the correct `.deb` to that release. Check its workflow status and confirm the asset appears before giving users the link.
+
+**Never overwrite the old `v0.9.1-rc2` release asset with a newer app**. Keep version-specific release history intact.
+
+Windows/macOS installers are not available. The app is unofficial and does not alter GNOME Settings itself.
