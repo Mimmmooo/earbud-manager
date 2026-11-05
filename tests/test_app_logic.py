@@ -157,7 +157,10 @@ class AutomaticRefreshTests(unittest.TestCase):
         self.assertNotIn('Refresh status', literals)
         self.assertNotIn('Refresh', literals)
         self.assertIn('Dual Connection', literals)
-        self.assertIn('Device Settings', literals)
+        self.assertIn('Remembered Devices', literals)
+        self.assertNotIn('Device Settings', literals)
+        self.assertNotIn('Multipoint ON/OFF', literals)
+        self.assertEqual(literals.count('Dual Connection'), 1)
 
     def test_periodic_refreshes_all_status_sources(self):
         periodic = self._method('periodic')
