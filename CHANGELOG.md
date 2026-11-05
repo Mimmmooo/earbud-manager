@@ -2,12 +2,13 @@
 
 ## v0.9.2-rc1 — compact connection status UI
 
-- Shows ✓ Connected or ✕ Disconnected directly below each paired Bluetooth audio device's name.
-- Displays paired/disconnected Bluetooth audio devices with device-specific controls disabled until connected.
-- Removes the separate Connection, Bluetooth battery summary, NTAPP connection, and Last action rows.
+- Displays settings only for connected Bluetooth audio devices with ✓ Connected below the selected name.
+- Shows a device-name dropdown only if multiple Bluetooth audio devices are connected; one device's controls are displayed at a time.
+- Removes the separate Connection, NTAPP connection, and Last action rows.
+- Displays a single BlueZ `Battery` fallback only when no left/right/case component reading is available, hiding the individual battery rows in that case.
 - Preserves individual left/right/case battery bars, ANC, gaming, multipoint, Find My Earbuds and header rename.
 - Replaces the permanent Last action row with transient notifications for operation failures.
-- Drops stale telemetry when a connected device disconnects, while keeping the paired device visible.
+- Drops stale telemetry on disconnect and removes disconnected-device settings from the page.
 - This is source-code release-candidate metadata; a new v0.9.2-rc1 .deb is not yet published.
 
 
