@@ -98,6 +98,9 @@ class App(Adw.Application):
         self.busy = set()
         self.cache = {}
         self.dual_cache = {}
+        self.dual_pending = set()
+        self.last_dual_read = {}
+        self.last_remembered_read = {}
         self.messages = {}
         self.remembered = {}
         self.device_fetching = set()
@@ -144,7 +147,10 @@ class App(Adw.Application):
         for device in list(self.devices_cache):
             if (device['address'] == self.selected_address and device.get('connected')
                     and known_cmf(device)):
-                self.schedule_read(device['address'])
+                address = device['address']
+                self.schedule_read(address)
+                self.read_dual(address)
+                self.read_remembered(address)
         return GLib.SOURCE_CONTINUE
 
     def device_lock(self, address):
@@ -204,6 +210,8 @@ class App(Adw.Application):
                     self._device_generation[missing] = self._device_generation.get(missing, 0) + 1
                     self.cache.pop(missing, None)
                     self.dual_cache.pop(missing, None)
+                    self.last_dual_read.pop(missing, None)
+                    self.last_remembered_read.pop(missing, None)
                     self.remembered.pop(missing, None)
                     self.messages.pop(missing, None)
                     self.last_read.pop(missing, None)
@@ -232,7 +240,8 @@ class App(Adw.Application):
     def schedule_read(self, address, force=False):
         if self._closing:
             return
-        if address in self.read_pending or address in self.busy:
+        if (address in self.read_pending or address in self.busy
+                or address in self.dual_pending or address in self.device_fetching):
             return
         now = time.monotonic()
         if not force and now-self.last_read.get(address, 0) < 12:
@@ -299,36 +308,76 @@ class App(Adw.Application):
                     elif kind in ('anc', 'latency'):
                         self.cache.setdefault(address, {})[kind] = previous
                 self.paint(address)
-                # Refresh hardware state after completion (do not start concurrent
-                # reads while the user command is still executing).
+                # Reset auto-refresh timestamps after a verified user action.
                 self.last_read[address] = 0
+                self.last_dual_read[address] = 0
+                self.last_remembered_read[address] = 0
                 self.schedule_read(address, force=True)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
         job.add_done_callback(complete)
 
-    def read_dual(self, address):
-        if address in self.busy or address in self.dual_cache:
+    def read_dual(self, address, force=False):
+        """Refresh multipoint state periodically without claiming a user action."""
+        if (self._closing or address in self.busy or address in self.read_pending
+                or address in self.dual_pending or address in self.device_fetching
+                or not any(d['address'] == address and d['connected']
+                           for d in self.devices_cache)):
             return
-        self.control(address, 'dual_get')
+        now = time.monotonic()
+        if not force and now - self.last_dual_read.get(address, 0) < 24:
+            return
+        self.last_dual_read[address] = now
+        self.dual_pending.add(address)
+        generation = self._device_generation.get(address, 0)
+        future = self.read_pool.submit(self.execute, address, dual_operation, 'get')
+
+        def complete(f):
+            def ui():
+                self.dual_pending.discard(address)
+                if self._closing or generation != self._device_generation.get(address, 0):
+                    return GLib.SOURCE_REMOVE
+                try:
+                    state = f.result()
+                    if state in ('On', 'Off'):
+                        self.dual_cache[address] = state
+                    else:
+                        self.dual_cache.pop(address, None)
+                except Exception:
+                    # An error is not proof that multipoint is off.
+                    self.dual_cache.pop(address, None)
+                self.paint(address)
+                return GLib.SOURCE_REMOVE
+            GLib.idle_add(ui)
+        future.add_done_callback(complete)
 
     def read_remembered(self, address):
         if self._closing:
             return
-        if address in self.device_fetching or address in self.busy or not any(
-                d['address'] == address and d['connected'] for d in self.devices_cache):
+        if (address in self.device_fetching or address in self.busy
+                or address in self.read_pending or address in self.dual_pending
+                or not any(d['address'] == address and d['connected']
+                           for d in self.devices_cache)):
             return
+        now = time.monotonic()
+        if now - self.last_remembered_read.get(address, 0) < 60:
+            return
+        self.last_remembered_read[address] = now
         self.device_fetching.add(address)
+        generation = self._device_generation.get(address, 0)
         fut = self.read_pool.submit(self.execute, address, dual_devices)
         def complete(f):
             def ui():
                 self.device_fetching.discard(address)
+                if self._closing or generation != self._device_generation.get(address, 0):
+                    return GLib.SOURCE_REMOVE
                 try:
                     self.remembered[address] = f.result()
                     self.populate_remembered(address)
-                except Exception as e:
-                    self.messages[address] = f'Device list: {safe_error(e)}'
-                    self.notify_status(self.messages[address])
+                except Exception:
+                    # Keep the UI usable if the device temporarily rejects NTAPP.
+                    self.remembered[address] = None
+                    self.populate_remembered(address)
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
@@ -553,13 +602,6 @@ class App(Adw.Application):
 
             dual_group = self.add_group(Adw.PreferencesGroup(title='Dual Connection',
                                                 description='Multipoint ON/OFF'))
-            status = Adw.ActionRow(title='Device state', subtitle='Unknown')
-            refresh = Gtk.Button(label='Refresh status', valign=Gtk.Align.CENTER)
-            refresh.connect('clicked', lambda _button, a=address: self.control(a, 'dual_get'))
-            status.add_suffix(refresh)
-            dual_group.add(status)
-            refs['dual_status'] = status
-            refs['dual_refresh'] = refresh
             dual = Adw.SwitchRow(title='Dual Connection')
             dual.set_sensitive(False)
             dual.connect('notify::active', self.on_switch, address, 'dual_set')
@@ -590,14 +632,7 @@ class App(Adw.Application):
 
             settings = self.add_group(Adw.PreferencesGroup(title='Device Settings',
                                         description='Remembered devices'))
-            heading = Adw.ActionRow(title='Remembered devices',
-                                    subtitle='Read-only; switching not hardware-tested')
-            refresh = Gtk.Button(label='Refresh', valign=Gtk.Align.CENTER)
-            refresh.connect('clicked', lambda _btn, a=address: self.read_remembered(a))
-            heading.add_suffix(refresh)
-            settings.add(heading)
             refs['remembered_group'] = settings
-            refs['remembered_header'] = heading
             refs['remembered_rows'] = []
             self.populate_remembered(address)
 
@@ -611,6 +646,7 @@ class App(Adw.Application):
             self.paint(address)
             if dev['connected']:
                 self.read_dual(address)
+                self.read_remembered(address)
 
     def populate_remembered(self, address):
         refs = self.widgets.get(address)
@@ -622,7 +658,7 @@ class App(Adw.Application):
         refs['remembered_rows'].clear()
         devices = self.remembered.get(address)
         if devices is None:
-            devices = [{'name': 'Press Refresh to read', 'connected': False, 'self': False}]
+            devices = [{'name': 'Loading remembered devices…', 'connected': False, 'self': False}]
         if not devices:
             devices = [{'name': 'No remembered devices reported', 'connected': False, 'self': False}]
         for dev in devices:
@@ -690,10 +726,8 @@ class App(Adw.Application):
             refs['latency'].set_active(latency == 'On')
             refs['latency'].set_sensitive(latency in ('On', 'Off') and not busy)
             dual = self.dual_cache.get(address)
-            refs['dual_status'].set_subtitle(dual or 'Unknown')
             refs['dual'].set_active(dual == 'On')
             refs['dual'].set_sensitive(dual in ('On', 'Off') and not busy)
-            refs['dual_refresh'].set_sensitive(not busy)
         finally:
             self._updating = False
 
