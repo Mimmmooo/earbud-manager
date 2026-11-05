@@ -104,18 +104,24 @@ class App(Adw.Application):
         toolbar = Adw.ToolbarView()
         toolbar.add_top_bar(Adw.HeaderBar())
         toolbar.set_content(self.page)
-        self.window.set_content(toolbar)
+        self.toast_overlay = Adw.ToastOverlay()
+        self.toast_overlay.set_child(toolbar)
+        self.window.set_content(self.toast_overlay)
         self.render_structure([])
         self.discover(force=True)
         GLib.timeout_add_seconds(3, self.periodic)
         self.window.present()
+
+    def notify_status(self, message):
+        if self.window and hasattr(self, 'toast_overlay'):
+            self.toast_overlay.add_toast(Adw.Toast.new(message))
 
     def periodic(self):
         if self._closing:
             return GLib.SOURCE_REMOVE
         self.discover()
         for device in list(self.devices_cache):
-            if known_cmf(device):
+            if device.get('connected') and known_cmf(device):
                 self.schedule_read(device['address'])
         return GLib.SOURCE_CONTINUE
 
@@ -137,13 +143,14 @@ class App(Adw.Application):
         found = []
         for object_path, interfaces in unpack(response)[0].items():
             props = interfaces.get('org.bluez.Device1')
-            if not props or not props.get('Connected'):
+            if not props or not (props.get('Connected') or props.get('Paired')):
                 continue
             uuids = [str(u).lower() for u in props.get('UUIDs', [])]
             if not any(u.startswith(AUDIO_UUIDS) for u in uuids):
                 continue
             found.append({'name': props.get('Alias') or props.get('Name') or 'Bluetooth Audio',
                           'original_name': props.get('Name') or '',
+                          'connected': bool(props.get('Connected')),
                           'object_path': object_path,
                           'address': props.get('Address', ''),
                           'battery': interfaces.get('org.bluez.Battery1', {}).get('Percentage'),
@@ -170,7 +177,8 @@ class App(Adw.Application):
                 old = self.devices_cache
                 previous_addresses = {d['address'] for d in old}
                 current_addresses = {d['address'] for d in devices}
-                for missing in previous_addresses - current_addresses:
+                disconnected = {d['address'] for d in old if d.get('connected')} - {d['address'] for d in devices if d.get('connected')}
+                for missing in (previous_addresses - current_addresses) | disconnected:
                     self._device_generation[missing] = self._device_generation.get(missing, 0) + 1
                     self.cache.pop(missing, None)
                     self.dual_cache.pop(missing, None)
@@ -178,14 +186,14 @@ class App(Adw.Application):
                     self.messages.pop(missing, None)
                     self.last_read.pop(missing, None)
                 self.devices_cache = devices
-                identity = tuple((d['address'], known_cmf(d)) for d in devices)
+                identity = tuple((d['address'], known_cmf(d), d['connected']) for d in devices)
                 if identity != self.topology:
                     self.render_structure(devices)
                 else:
                     for dev in devices:
                         self.paint(dev['address'])
                 for dev in devices:
-                    if known_cmf(dev):
+                    if dev['connected'] and known_cmf(dev):
                         self.schedule_read(dev['address'], force=not bool(old))
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
@@ -193,6 +201,7 @@ class App(Adw.Application):
 
     def show_error(self, message):
         # Errors never contain personal telemetry in logs or project files.
+        self.notify_status(message)
         for device in self.devices_cache:
             self.messages[device['address']] = message
             self.paint(device['address'])
@@ -224,7 +233,8 @@ class App(Adw.Application):
         fut.add_done_callback(complete)
 
     def control(self, address, kind, value=None):
-        if self._closing or address in self.busy:
+        if (self._closing or address in self.busy or not any(
+                d['address'] == address and d['connected'] for d in self.devices_cache)):
             return
         self.busy.add(address)
         self._device_generation[address] = self._device_generation.get(address, 0)+1
@@ -260,6 +270,7 @@ class App(Adw.Application):
                     self.messages[address] = f'{kind}: {result} (verified)'
                 except Exception as e:
                     self.messages[address] = f'{kind}: {safe_error(e)}'
+                    self.notify_status(self.messages[address])
                     if kind == 'dual_set':
                         self.dual_cache[address] = previous
                     elif kind in ('anc', 'latency'):
@@ -281,7 +292,8 @@ class App(Adw.Application):
     def read_remembered(self, address):
         if self._closing:
             return
-        if address in self.device_fetching or address in self.busy:
+        if address in self.device_fetching or address in self.busy or not any(
+                d['address'] == address and d['connected'] for d in self.devices_cache):
             return
         self.device_fetching.add(address)
         fut = self.read_pool.submit(self.execute, address, dual_devices)
@@ -293,6 +305,7 @@ class App(Adw.Application):
                     self.populate_remembered(address)
                 except Exception as e:
                     self.messages[address] = f'Device list: {safe_error(e)}'
+                    self.notify_status(self.messages[address])
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
@@ -423,7 +436,7 @@ class App(Adw.Application):
         return row, bar
 
     def render_structure(self, devices):
-        self.topology = tuple((d['address'], known_cmf(d)) for d in devices)
+        self.topology = tuple((d['address'], known_cmf(d), d['connected']) for d in devices)
         for group in self.groups:
             self.page.remove(group)
         self.groups.clear()
@@ -439,7 +452,7 @@ class App(Adw.Application):
             refs = self.widgets[address] = {}
             g = self.add_group(Adw.PreferencesGroup(
                 title=dev['name'],
-                description='Bluetooth audio device'))
+                description='✓ Connected' if dev['connected'] else '✕ Disconnected'))
             refs['main_group'] = g
             edit_button = Gtk.Button(icon_name='document-edit-symbolic',
                                      valign=Gtk.Align.CENTER)
@@ -453,10 +466,6 @@ class App(Adw.Application):
             hover.connect('enter', lambda *_args, btn=edit_button: btn.set_opacity(1.0))
             hover.connect('leave', lambda *_args, btn=edit_button: btn.set_opacity(0.0))
             g.add_controller(hover)
-            g.add(Adw.ActionRow(title='Connection', subtitle='Connected'))
-            summary = Adw.ActionRow(title='Bluetooth battery', subtitle='Reading…')
-            g.add(summary)
-            refs['summary'] = summary
             if not cmf:
                 g.add(Adw.ActionRow(title='Individual batteries',
                                     subtitle='Device-specific protocol not available'))
@@ -464,8 +473,6 @@ class App(Adw.Application):
             for side, label in (('left', 'Left earbud'), ('right', 'Right earbud'),
                                 ('case', 'Charging case')):
                 refs[side] = self.add_battery_row(g, label)
-            refs['status'] = Adw.ActionRow(title='NTAPP connection', subtitle='Reading…')
-            g.add(refs['status'])
             choices = list(SET_MODES)
             anc = Adw.ComboRow(title='ANC / Transparency', subtitle='Select a mode to apply')
             anc.set_model(Gtk.StringList.new(choices))
@@ -478,8 +485,6 @@ class App(Adw.Application):
             latency.connect('notify::active', self.on_switch, address, 'latency')
             g.add(latency)
             refs['latency'] = latency
-            refs['message'] = Adw.ActionRow(title='Last action', subtitle='Ready')
-            g.add(refs['message'])
 
             dual_group = self.add_group(Adw.PreferencesGroup(title='Dual Connection',
                                                 description='Multipoint ON/OFF'))
@@ -539,7 +544,8 @@ class App(Adw.Application):
                 row.set_sensitive(False)
                 phone.add(row)
             self.paint(address)
-            self.read_dual(address)
+            if dev['connected']:
+                self.read_dual(address)
 
     def populate_remembered(self, address):
         refs = self.widgets.get(address)
@@ -563,7 +569,8 @@ class App(Adw.Application):
             refs['remembered_rows'].append(row)
 
     def on_anc(self, widget, _param, address, choices):
-        if self._updating or address in self.busy:
+        if self._updating or address in self.busy or not any(
+                d['address'] == address and d['connected'] for d in self.devices_cache):
             return
         index = widget.get_selected()
         if index >= len(choices):
@@ -583,14 +590,15 @@ class App(Adw.Application):
 
     def paint(self, address):
         refs = self.widgets.get(address)
-        if not refs or 'main_group' not in refs or 'status' not in refs:
+        if not refs or 'main_group' not in refs:
             return
         dev = next((d for d in self.devices_cache if d['address'] == address), None)
         if not dev:
             return
-        data = self.cache.get(address, {})
+        if 'left' not in refs:
+            return
+        data = self.cache.get(address, {}) if dev['connected'] else {}
         battery = data.get('battery', {})
-        refs['summary'].set_subtitle(battery_summary(battery, dev.get('battery')))
         for side in ('left', 'right', 'case'):
             row, bar = refs[side]
             val = battery.get(side)
@@ -599,9 +607,9 @@ class App(Adw.Application):
             bar.set_visible(val is not None)
             if val is not None:
                 bar.set_fraction(max(0.0, min(1.0, val['percent']/100)))
-        refs['status'].set_subtitle('Connected' if data else 'Reading device…')
-        refs['message'].set_subtitle(self.messages.get(address, 'Ready'))
-        busy = address in self.busy
+        busy = address in self.busy or not dev['connected']
+        for side in ('left', 'right'):
+            refs[f'ring_{side}'][0].set_sensitive(dev['connected'])
         self._updating = True
         try:
             anc = data.get('anc')
@@ -620,7 +628,8 @@ class App(Adw.Application):
             self._updating = False
 
     def ring_action(self, address, side):
-        if self._closing:
+        if self._closing or not any(
+                d['address'] == address and d['connected'] for d in self.devices_cache):
             return
         key = (address, side)
         existing = self.ringing.get(key)
@@ -644,6 +653,7 @@ class App(Adw.Application):
                     self.messages[address] = f'Find My Earbuds: {side} playing'
                 except Exception as e:
                     self.messages[address] = f'Find My Earbuds: {safe_error(e)}'
+                    self.notify_status(self.messages[address])
                     self.stop_ring(address, side, token)
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
@@ -666,6 +676,7 @@ class App(Adw.Application):
                     self.messages[address] = f'Find My Earbuds: {side} stopped'
                 except Exception as e:
                     self.messages[address] = f'Stop command failed: {safe_error(e)}'
+                    self.notify_status(self.messages[address])
                 self.paint(address)
                 return GLib.SOURCE_REMOVE
             GLib.idle_add(ui)
